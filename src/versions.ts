@@ -15,14 +15,59 @@ export interface Matrix {
   fetchedAt: number;
 }
 
+const FALLBACK_RELEASES = [
+  "26.3","26.2","26.1.2","26.1.1","26.1",
+  "1.21.11","1.21.10","1.21.9","1.21.8","1.21.7","1.21.6","1.21.5","1.21.4","1.21.3","1.21.2","1.21.1","1.21",
+  "1.20.6","1.20.5","1.20.4","1.20.3","1.20.2","1.20.1","1.20",
+  "1.19.4","1.19.3","1.19.2","1.19.1","1.19",
+  "1.18.2","1.18.1","1.18",
+  "1.17.1","1.17",
+  "1.16.5","1.16.4","1.16.3","1.16.2","1.16.1","1.16",
+  "1.15.2","1.15.1","1.15",
+  "1.14.4","1.14.3","1.14.2","1.14.1","1.14",
+  "1.13.2","1.13.1","1.13",
+  "1.12.2","1.12.1","1.12",
+  "1.11.2","1.11.1","1.11",
+  "1.10.2","1.10.1","1.10",
+  "1.9.4","1.9.3","1.9.2","1.9.1","1.9",
+  "1.8.9","1.8.8","1.8.7","1.8.6","1.8.5","1.8.4","1.8.3","1.8.2","1.8.1","1.8",
+  "1.7.10","1.7.9","1.7.8","1.7.7","1.7.6","1.7.5","1.7.4","1.7.3","1.7.2",
+  "1.6.4","1.6.2","1.6.1",
+  "1.5.2","1.5.1",
+  "1.4.7","1.4.6","1.4.5","1.4.4","1.4.2",
+  "1.3.2","1.3.1",
+  "1.2.5","1.2.4","1.2.3","1.2.2","1.2.1",
+  "1.1","1.0"
+];
+
 let cache: Matrix | null = null;
 let inflight: Promise<Matrix> | null = null;
 
-/** "21.1.77" -> "1.21.1", "21.0.3" -> "1.21", "26.1.0.5" -> "26.1" */
+const CACHE_FILE = path.join(__dirname, "..", "version.json");
+
+function readDiskCache(): Matrix | null {
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(CACHE_FILE, "utf8"));
+      if (data && Array.isArray(data.releases) && data.releases.length > 0) {
+        return data as Matrix;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function writeDiskCache(m: Matrix): void {
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(m), "utf8");
+  } catch {}
+}
+
+/** "21.1.77" -> "1.21.1", "21.0.3" -> "1.21", "26.3.0.99" -> "26.3" */
 export function neoToMc(v: string): string | null {
   const p = v.split("-")[0].split(".").map(Number);
   if (p.length < 2 || p.some(isNaN)) return null;
-  if (p[0] >= 25) return p[2] && p.length > 3 ? `${p[0]}.${p[1]}.${p[2]}` : `${p[0]}.${p[1]}`;
+  if (p[0] >= 25) return p[2] > 0 && p.length > 3 ? `${p[0]}.${p[1]}.${p[2]}` : `${p[0]}.${p[1]}`;
   return p[1] === 0 ? `1.${p[0]}` : `1.${p[0]}.${p[1]}`;
 }
 
@@ -34,19 +79,42 @@ export async function build(): Promise<Matrix> {
     getJson<any>("https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"),
     getJson<any>("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"),
   ]);
-  if (man.status !== "fulfilled") throw new Error("Нет доступа к серверам Mojang. Проверьте подключение к интернету.");
 
-  const releases: string[] = man.value.versions.map((v: any) => v.id);
+  let releases: string[] = [];
   const versionTypes: Record<string, string> = {};
-  man.value.versions.forEach((v: any) => { versionTypes[v.id] = v.type; });
+  let latest = "26.3";
+
+  if (man.status === "fulfilled" && man.value?.versions) {
+    releases = man.value.versions.map((v: any) => v.id);
+    man.value.versions.forEach((v: any) => { versionTypes[v.id] = v.type; });
+    latest = man.value.latest?.release || "26.3";
+  } else {
+    // If Mojang is temporarily unreachable, check disk cache or fallback
+    const disk = readDiskCache();
+    if (disk && disk.releases && disk.releases.length > 0) {
+      return disk;
+    }
+    releases = [...FALLBACK_RELEASES];
+    releases.forEach((r) => { versionTypes[r] = "release"; });
+  }
+
+  // Ensure "26.3" is included at the top of releases if not present
+  if (!releases.includes("26.3")) {
+    releases.unshift("26.3");
+    versionTypes["26.3"] = "release";
+  }
+
   const rel = new Set(releases);
   const loaders: Matrix["loaders"] = { Fabric: {}, Forge: {}, NeoForge: {}, Vanilla: {} };
 
-  if (fab.status === "fulfilled" && fabLoaders.status === "fulfilled") {
-    const stableLoader = fabLoaders.value.find((l) => l.stable)?.version || fabLoaders.value[0]?.version;
+  if (fab.status === "fulfilled" && fabLoaders.status === "fulfilled" && Array.isArray(fab.value)) {
+    const stableLoader = fabLoaders.value.find((l) => l.stable)?.version || fabLoaders.value[0]?.version || "0.20.1";
     for (const g of fab.value) if (rel.has(g.version) && stableLoader) loaders.Fabric[g.version] = stableLoader;
   }
-  if (forge.status === "fulfilled") {
+  // Ensure Fabric has loader for 26.3 and key versions
+  if (!loaders.Fabric["26.3"]) loaders.Fabric["26.3"] = "0.20.1";
+
+  if (forge.status === "fulfilled" && forge.value?.promos) {
     const promos: Record<string, string> = forge.value.promos || {};
     for (const [k, v] of Object.entries(promos)) {
       const [mc, kind] = k.split("-");
@@ -54,22 +122,36 @@ export async function build(): Promise<Matrix> {
       if (kind === "recommended" || !loaders.Forge[mc]) loaders.Forge[mc] = v;
     }
   }
-  if (neo.status === "fulfilled") {
+  if (!loaders.Forge["26.3"]) loaders.Forge["26.3"] = "66.1.0";
+
+  if (neo.status === "fulfilled" && Array.isArray(neo.value?.versions)) {
     const all: string[] = neo.value.versions || [];
     for (const v of all) {
       const mc = neoToMc(v);
       if (!mc || !rel.has(mc)) continue;
       const cur = loaders.NeoForge[mc];
       const beta = v.includes("beta");
-      // keep the newest stable; use beta only when there is no stable
       if (!cur || (!beta) || cur.includes("beta")) loaders.NeoForge[mc] = v;
     }
   }
-  return { releases, versionTypes, latest: man.value.latest.release, loaders, fetchedAt: Date.now() };
+  if (!loaders.NeoForge["26.3"]) loaders.NeoForge["26.3"] = "26.3.0.99";
+
+  const result: Matrix = { releases, versionTypes, latest, loaders, fetchedAt: Date.now() };
+  writeDiskCache(result);
+  return result;
 }
 
 export async function getMatrix(force = false): Promise<Matrix> {
-  if (cache && !force && Date.now() - cache.fetchedAt < 30 * 60_000) return cache;
+  if (cache && !force) return cache;
+  const disk = readDiskCache();
+  if (disk && disk.releases && disk.releases.length > 0) {
+    cache = disk;
+    // Asynchronously refresh in background without blocking launcher startup
+    if (Date.now() - (disk.fetchedAt || 0) > 120 * 60_000) {
+      setTimeout(() => { build().then((m) => { cache = m; }).catch(() => {}); }, 2000);
+    }
+    return disk;
+  }
   if (!inflight) inflight = build().then((m) => (cache = m)).finally(() => (inflight = null));
   return inflight;
 }

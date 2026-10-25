@@ -29,11 +29,18 @@ function markInstalled(root: string, combo: string) {
 
 // ─── Java ────────────────────────────────────────────────────────────────────
 async function requiredJava(mc: string): Promise<number> {
-  const man = await getJson<any>("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json");
-  const v = man.versions.find((x: any) => x.id === mc);
-  if (!v) throw new Error(`Версия ${mc} не найдена`);
-  const j = await getJson<any>(v.url);
-  return j.javaVersion?.majorVersion ?? 8;
+  try {
+    const man = await getJson<any>("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json");
+    const v = man.versions.find((x: any) => x.id === mc);
+    if (!v) throw new Error(`Версия ${mc} не найдена`);
+    const j = await getJson<any>(v.url);
+    return j.javaVersion?.majorVersion ?? 21;
+  } catch {
+    const parts = mc.split(".").map(Number);
+    if (parts[0] >= 25 || (parts[0] === 1 && parts[1] >= 20 && (parts[2] ?? 0) >= 5)) return 21;
+    if (parts[0] === 1 && parts[1] >= 17) return 17;
+    return 8;
+  }
 }
 
 function findJava(dir: string): string | null {
@@ -42,8 +49,15 @@ function findJava(dir: string): string | null {
     const cand = path.join(d, "bin", exe);
     if (fs.existsSync(cand)) return cand;
     if (depth <= 0) return null;
-    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-      if (e.isDirectory()) { const r = walk(path.join(d, e.name), depth - 1); if (r) return r; }
+    try {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          const r = walk(path.join(d, e.name), depth - 1);
+          if (r) return r;
+        }
+      }
+    } catch {
+      return null;
     }
     return null;
   };
@@ -55,7 +69,7 @@ async function ensureJava(root: string, major: number, wc: WebContents): Promise
   const dir = path.join(root, "runtime", `java-${feature}`);
   const have = findJava(dir);
   if (have) return have;
-  if (process.platform !== "win32") return "java"; // TODO: tar.gz runtimes for macOS/Linux
+  if (process.platform !== "win32") return "java";
   const arch = process.arch === "arm64" ? "aarch64" : "x64";
   const url = `https://api.adoptium.net/v3/binary/latest/${feature}/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`;
   const zip = path.join(root, "runtime", `java-${feature}.zip`);
@@ -85,6 +99,7 @@ interface LaunchReq {
   ram: number;
   packId?: string;
   elyAuth?: boolean;
+  server?: string;
 }
 
 function validate(o: any): LaunchReq {
@@ -101,6 +116,7 @@ function validate(o: any): LaunchReq {
     ram,
     packId: o.packId ? safeId(o.packId) : undefined,
     elyAuth: Boolean(o.elyAuth),
+    server: typeof o.server === "string" && o.server.trim() ? o.server.trim().slice(0, 128) : undefined,
   };
 }
 
@@ -109,8 +125,13 @@ async function launch(req: LaunchReq, root: string, wc: WebContents) {
   let lv = "";
   if (req.loader !== "Vanilla") {
     const matrix = await getMatrix();
-    lv = matrix.loaders[req.loader][req.version];
-    if (!lv) throw new Error(`Для ${req.version} нет ${req.loader}`);
+    lv = matrix.loaders[req.loader]?.[req.version] || "";
+    if (!lv) {
+      if (req.loader === "Fabric") lv = "0.20.1";
+      else if (req.loader === "Forge") lv = req.version.startsWith("26.") ? "66.1.0" : "47.4.28";
+      else if (req.loader === "NeoForge") lv = req.version.startsWith("26.") ? "26.3.0.99" : "21.1.265";
+      else throw new Error(`Для ${req.version} нет ${req.loader}`);
+    }
   }
 
   const javaPath = await ensureJava(root, await requiredJava(req.version), wc);
@@ -123,6 +144,11 @@ async function launch(req: LaunchReq, root: string, wc: WebContents) {
     overrides: { detached: true, maxSockets: 8 },
     customArgs: [] as string[],
   };
+  if (req.server) {
+    const parts = req.server.split(":");
+    opts.customArgs.push("--server", parts[0]);
+    if (parts[1]) opts.customArgs.push("--port", parts[1]);
+  }
   if (req.packId) {
     const packDir = path.join(root, "instances", req.packId);
     const modsDir = path.join(packDir, "mods");
@@ -163,8 +189,12 @@ async function launch(req: LaunchReq, root: string, wc: WebContents) {
   }
 
   if (auth.type === "elyby" && req.elyAuth) {
-    const jar = await ensureAuthlib(root);
-    opts.customArgs.push(`-javaagent:${jar}=ely.by`);
+    try {
+      const jar = await ensureAuthlib(root);
+      opts.customArgs.push(`-javaagent:${jar}=ely.by`);
+    } catch (e) {
+      console.warn("Could not setup authlib-injector:", e);
+    }
   }
 
   const client = new Client();

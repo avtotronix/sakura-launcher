@@ -35,6 +35,37 @@ const mkGL=name=>()=>{
 };
 
 /* ---- scene: living photo (your own picture with wind, light and dust) ---- */
+
+window.applyVideoBg = function(fileOrBlob) {
+  const vid = document.getElementById('bg_video');
+  if (!vid) return;
+  if (vid._url) URL.revokeObjectURL(vid._url);
+  vid._url = URL.createObjectURL(fileOrBlob);
+  vid.src = vid._url;
+  vid.hidden = false;
+  vid.play().catch(()=>{});
+  const g = document.getElementById('g');
+  if (g) g.hidden = true;
+  window.updateBgFilters();
+};
+
+window.stopVideoBg = function() {
+  const vid = document.getElementById('bg_video');
+  if (vid) {
+    vid.pause();
+    vid.hidden = true;
+  }
+};
+
+window.updateBgFilters = function() {
+  const vid = document.getElementById('bg_video');
+  if (vid) {
+    const dim = 1 - (ST.phDim || 25) / 100;
+    const blr = (ST.phBlur || 0);
+    vid.style.filter = `brightness(${dim}) blur(${blr}px)`;
+  }
+};
+
 const mkPhoto=()=>{
   try{
     if(!glc)glc=glInit();if(!glc)return null;
@@ -45,7 +76,7 @@ const mkPhoto=()=>{
       iw=src.width;ih=src.height};
     const shrink=bm=>{const m=Math.max(bm.width,bm.height),k=Math.min(1,2048/m),c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);c.getContext('2d').drawImage(bm,0,0,c.width,c.height);return c};
     const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('sakura',1);r.onupgradeneeded=()=>r.result.createObjectStore('bg');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
-    (async()=>{try{const db=await idb();const b=await new Promise(res=>{const r=db.transaction('bg').objectStore('bg').get('img');r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)});if(b)upload(shrink(await createImageBitmap(b)))}catch(e){}})();
+    (async()=>{try{const db=await idb();const b=await new Promise(res=>{const r=db.transaction('bg').objectStore('bg').get('img');r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)});if(b){ if(b.type && b.type.startsWith('video/')){ window.applyVideoBg(b); } else { upload(shrink(await createImageBitmap(b))); } }}catch(e){}})();
     return {
       gl:true,build:glBuild,
       async set(file){const bm=shrink(await createImageBitmap(file));upload(bm);try{const db=await idb();await new Promise((res,rej)=>{const t=db.transaction('bg','readwrite');t.objectStore('bg').put(file,'img');t.oncomplete=res;t.onerror=()=>rej(t.error)})}catch(e){}},
@@ -66,7 +97,7 @@ function setScene(id){
   if(!sc){id='sakura';sc=SCN[id]||(SCN[id]=MK[id]())}
   scene=sc;document.documentElement.dataset.scene=id;
   $('#g').hidden=!sc.gl;$('#c').hidden=!!sc.gl;
-  sc.build();ST.scene=id;$('#phs').hidden=id!=='photo';
+  if(id!=='photo'){ if(window.stopVideoBg)window.stopVideoBg(); } else { const vid=document.getElementById('bg_video'); if(vid&&vid.src){ vid.hidden=false; vid.play().catch(()=>{}); $('#g').hidden=true; if(window.updateBgFilters)window.updateBgFilters(); } } sc.build();ST.scene=id;$('#phs').hidden=id!=='photo';
 }
 let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>scene&&scene.build(),150)});
 
@@ -89,7 +120,13 @@ function frame(now){
 const nav=id=>$(`.n[data-p="${id}"]`).click();
 $$('.n').forEach(b=>b.onclick=()=>{
   $$('.n').forEach(x=>x.removeAttribute('aria-current'));b.setAttribute('aria-current','page');
-  $$('section').forEach(s=>s.hidden=s.id!==b.dataset.p);if(b.dataset.p==='skins')render();if(b.dataset.p==='mods'&&!mloaded){mloaded=true;msearch()}$('.panel').classList.toggle('wide',b.dataset.p==='skins');$('.panel').classList.toggle('xl',b.dataset.p==='mods');
+  $$('section').forEach(s=>s.hidden=s.id!==b.dataset.p);
+  if(b.dataset.p==='skins')render();
+  if(b.dataset.p==='mods'&&!mloaded){mloaded=true;msearch()}
+  if(b.dataset.p==='servers'&&window.initServers){window.initServers()}
+  $('.panel').classList.toggle('wide',b.dataset.p==='skins');
+  $('.panel').classList.toggle('xl',b.dataset.p==='mods'||b.dataset.p==='servers');
 });
+//
 
 /* ---- versions and loaders ---- */

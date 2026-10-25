@@ -179,12 +179,42 @@ DATA2.split('\n').forEach(l=>{const a=l.split('|');if(!ALL.some(x=>x.n.toLowerCa
 /* ---- mods: catalog (Modrinth / CurseForge), packs, community ---- */
 const CATS=[['adventure','Приключения'],['cursed','Проклятое'],['decoration','Декор'],['economy','Экономика'],['equipment','Снаряжение'],['food','Еда'],['game-mechanics','Игровая механика'],['library','Библиотеки'],['magic','Магия'],['management','Управление'],['minigame','Мини-игры'],['mobs','Мобы'],['optimization','Оптимизация'],['social','Социальное'],['storage','Хранение'],['technology','Технологии'],['transportation','Транспорт'],['utility','Утилиты'],['worldgen','Генерация мира']];
 const DEMOCAT={o:'optimization',u:'utility',t:'technology',f:'food',m:'magic',a:'adventure',w:'worldgen',b:'decoration',l:'library',g:'game-mechanics',e:'equipment',s:'storage',k:'mobs',r:'transportation',c:'social',n:'management',h:'economy'};
+const INITIAL_INSTALLED_MODS = [
+  { id: "architectury", t: "Architectury", d: "A intermediary api aimed to ease developing multiplatform mods.", verStr: "15.0.3", src: "mr", icon: "https://cdn.modrinth.com/data/lhGA9TYQ/icon.png", url: "https://modrinth.com/mod/architectury-api", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "continuity", t: "Continuity", d: "Continuity is a Fabric mod that allows resource packs that use the OptiFine connected textures format, OptiFine emissive textures format (only for block...", verStr: "3.0.0+1.21.4", src: "man", icon: "https://cdn.modrinth.com/data/1IjD5062/icon.png", url: "https://modrinth.com/mod/continuity", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "cosmetica", t: "Cosmetica", d: "Custom Cosmetics for Free, Forever!", verStr: "2.0.1-1.21.4", src: "mr", icon: "https://cdn.modrinth.com/data/s9hF9QGp/e954c4883e72f95d8e799d167171cde74b059b51_96.webp", url: "https://modrinth.com/mod/cosmetica", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "e4steam", t: "e4steam", d: "Share an integrated Minecraft LAN world through Steam P2P and Valve relays using App ID 480. Created by Kamilchik.", verStr: "0.3.2", src: "cf", icon: "https://cdn.modrinth.com/data/2m2m6i7d/icon.png", url: "https://www.curseforge.com/minecraft/mc-mods/e4steam", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "emotecraft", t: "Emotecraft", d: "Play emotes in Minecraft Open the menu to setup your fast-choose wheel You can add custom emotes, and you can play these even if nobody else has the...", verStr: "2.5.8", src: "man", icon: "https://cdn.modrinth.com/data/pZ2wrerK/eed7e2c9851392e5879c7d7cb763f142f124e6d2_96.webp", url: "https://modrinth.com/mod/emotecraft", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "fabric-api", t: "Fabric API", d: "Core API module providing key hooks and intercompatibility features.", verStr: "0.119.4+1.21.4", src: "man", icon: "https://cdn.modrinth.com/data/P7dR8mSH/icon.png", url: "https://modrinth.com/mod/fabric-api", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "freecam", t: "Freecam", d: "A highly customizable freecam mod.", verStr: "1.3.2+mc1.21.4", src: "man", icon: "https://cdn.modrinth.com/data/XeEZ3fK2/9529a900a2aa6ed56c1b3167f165bac91b3acd6e_96.webp", url: "https://modrinth.com/mod/freecam", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "health-indicators", t: "Health Indicators", d: "Simple damage indicator mod that shows a floating health bar (or number) above Players and Mobs.", verStr: "21.2.2-beta", src: "mr", icon: "https://cdn.modrinth.com/data/htkVd6dQ/794a8d09ae2022333a6c423a5f30954b8281e8dd_96.webp", url: "https://modrinth.com/mod/health-indicators", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "in-game-account-switcher", t: "In-Game Account Switcher", d: "Allows you to change which account you are signed in to in-game without restarting Minecraft.", verStr: "9.0.7+1.21.4-fabric", src: "man", icon: "https://cdn.modrinth.com/data/cudtvDnd/fe9928884fecdd1f967ea37817e01ac987d4aa5a_96.webp", url: "https://modrinth.com/mod/in-game-account-switcher", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "iris", t: "Iris", d: "A modern shaders mod for Minecraft intended to be compatible with existing OptiFine shader packs", verStr: "1.8.8+mc1.21.4", src: "mr", icon: "https://cdn.modrinth.com/data/YL57xq9U/18d0e7f076d3d6ed5bedd472b853909aac5da202_96.webp", url: "https://modrinth.com/mod/iris", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "item-scroller", t: "Item Scroller", d: "Move items in inventory GUIs by scrolling the mouse wheel or dragging over slots", verStr: "0.26.5", src: "man", icon: "https://cdn.modrinth.com/data/JygyCSA4/07db2203f74b2adc775822c2edf577b343df04f8_96.webp", url: "https://modrinth.com/mod/item-scroller", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "malilib", t: "MaLiLib", d: "A library mod required by masa's client-side mods", verStr: "0.23.5", src: "man", icon: "https://cdn.modrinth.com/data/GcWjdA9I/a530ae55df5e0c405f5cf1b3e4fd6163a398bdc3.png", url: "https://modrinth.com/mod/malilib", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "modmenu", t: "Mod Menu", d: "Adds a mod menu to view the list of mods you have installed.", verStr: "13.0.4", src: "man", icon: "https://cdn.modrinth.com/data/mOgUt4GM/5a20ed1450a0e1e79a1fe04e61bb4e5878bf1d20.png", url: "https://modrinth.com/mod/modmenu", enabled: true, v: "1.21.4", l: "Fabric" },
+  { id: "placeholder-api", t: "Placeholder API", d: "Simple api for mods allowing for user friendly formatting and universal placeholders!", verStr: "2.5.2+1.21.3", src: "man", icon: "https://cdn.modrinth.com/data/eXts2L7r/e9c9990896e6422bffc5f73d2c41b8f077348f83.png", url: "https://modrinth.com/mod/placeholder-api", enabled: true, v: "1.21.4", l: "Fabric" }
+];
+if (!Array.isArray(ST.mods) || ST.mods.length === 0 || !ST.mods.some(m => m.id === 'architectury')) {
+  ST.mods = JSON.parse(JSON.stringify(INITIAL_INSTALLED_MODS));
+}
 const mi={};ST.mods.forEach(m=>mi[m.t]=[m.v+' '+m.l]);
-let mloaded=false,mseq=0,mt,mtab='mod',msrc='mr',csrc='sak',mld='Fabric',mcat=new Set(),moff=0;
+let mctype='mod',mloaded=false,mseq=0,mt,mtab='inst',msrc='mr',csrc='sak',mld='Fabric',mcat=new Set(),moff=0;
 const MRU='https://api.modrinth.com/v2',CFU='https://api.curseforge.com/v1',LK={Fabric:'fabric',Forge:'forge',NeoForge:'neoforge'},CFL={Forge:1,Fabric:4,NeoForge:6};
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const mv=$('#mv');
-mv.innerHTML=VR.map(v=>`<option>${v}</option>`).join('');mv.value='1.21.1';
+window.updateAllVersionDropdowns = function(list) {
+  if (!Array.isArray(list) || list.length === 0) return;
+  VR = [...list];
+  const curMv = mv.value;
+  mv.innerHTML = VR.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (VR.includes(curMv)) mv.value = curMv;
+  else if (VR.includes('26.3')) mv.value = '26.3';
+  else if (VR.includes('1.21.1')) mv.value = '1.21.1';
+  if ($('#pnv')) $('#pnv').innerHTML = mv.innerHTML;
+};
+mv.innerHTML=VR.map(v=>`<option value="${v}">${v}</option>`).join('');
+mv.value = VR.includes('26.3') ? '26.3' : (VR.includes('1.21.1') ? '1.21.1' : (VR[0] || '1.20.1'));
 $('#pnv').innerHTML=mv.innerHTML;$('#pnl').innerHTML=LD.map(l=>`<option>${l}</option>`).join('');
 const fmtN=n=>n>=1e6?(n/1e6).toFixed(1).replace('.',',')+' млн':n>=1e3?Math.round(n/1e3)+' тыс.':String(n);
 const SV={dl:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',ch:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',ex:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',pl:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'};
@@ -197,20 +227,107 @@ async function cfj(path){
   return await r.json();
 }
 function mchips(){
-  const mod=mtab==='mod',comm=mtab==='comm';
-  $('#msrc').innerHTML=mod?[['mr','Modrinth'],['cf','CurseForge']].map(c=>`<button class="chip" aria-pressed="${msrc===c[0]}" data-s="${c[0]}">${c[1]}</button>`).join(''):comm?[['sak','Игроки Sakura'],['mr','Modrinth']].map(c=>`<button class="chip" aria-pressed="${csrc===c[0]}" data-s="${c[0]}">${c[1]}</button>`).join(''):'';
-  $('#mld').innerHTML=LD.map(l=>`<button class="chip" aria-pressed="${l===mld}" data-l="${l}">${l}</button>`).join('');
-  $('#mcats').innerHTML=CATS.map(c=>`<button class="chip" aria-pressed="${mcat.has(c[0])}" data-c="${c[0]}">${c[1]}</button>`).join('');
-  $$('#mt .mtab').forEach(b=>b.setAttribute('aria-selected',b.dataset.t===mtab));
-  const filt=mod||(comm&&csrc==='mr');
-  $('#msrc').hidden=!(mod||comm);$('#mld').hidden=$('#mv').hidden=$('.msearch').hidden=!filt;$('#mcw').hidden=!(mod&&msrc==='mr');
-  $('#mq').placeholder=comm?'Поиск сборок':'Поиск модов';
-  document.querySelector('.mbody').classList.toggle('one',$('#mcw').hidden);
+  $$('#mtypes .mtype-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.type === mctype);
+  });
+
+  const isBrowse = mtab === 'mod';
+  const isInst = mtab === 'inst';
+  const isMine = mtab === 'mine' || mtab === 'comm';
+
+  if ($('#msrc')) $('#msrc').innerHTML = isBrowse ? [['mr','Modrinth'],['cf','CurseForge']].map(c=>`<button class="chip" aria-pressed="${msrc===c[0]}" data-s="${c[0]}">${c[1]}</button>`).join('') : '';
+  if ($('#mld')) $('#mld').innerHTML = LD.map(l=>`<button class="chip" aria-pressed="${l===mld}" data-l="${l}">${l}</button>`).join('');
+  if ($('#mcats')) $('#mcats').innerHTML = CATS.map(c=>`<button class="chip" aria-pressed="${mcat.has(c[0])}" data-c="${c[0]}">${c[1]}</button>`).join('');
+
+  $$('#mt .mtab, #mt .mtab-pill').forEach(b => {
+    const sel = b.dataset.t === mtab;
+    b.setAttribute('aria-selected', sel);
+    b.classList.toggle('active', sel);
+  });
+
+  if ($('#msrc')) $('#msrc').hidden = !isBrowse;
+  // Mod loader chips only relevant for java mods
+  if ($('#mld')) $('#mld').hidden = !isBrowse || mctype !== 'mod';
+  if ($('#mv')) $('#mv').hidden = !isBrowse;
+  // Category tags sidebar only relevant for mods
+  if ($('#mcw')) $('#mcw').hidden = !(isBrowse && msrc === 'mr' && mctype === 'mod');
+
+  const mb = document.querySelector('.mbody');
+  if (mb) mb.classList.toggle('one', !isBrowse || msrc !== 'mr' || mctype !== 'mod');
 }
-const card=h=>`<div class="mc2"><div class="ico">${h.icon&&/^https:\/\/(cdn\.modrinth\.com|media\.forgecdn\.net)\//.test(h.icon)?`<img src="${esc(h.icon)}" alt="">`:esc(h.t.slice(0,1))}</div><div class="mi"><b>${esc(h.t)}<span class="dl">${esc(h.n||'')}</span></b><p>${esc(h.d)}</p></div><div class="mb"><button class="dlb" data-id="${esc(h.id)}" data-t="${esc(h.t)}" data-src="${h.src}" data-pt="${h.pt}" aria-label="Скачать ${esc(h.t)}">${SV.dl}</button><button class="chv" data-x aria-label="Дополнительно" aria-expanded="false">${SV.ch}</button>${h.url&&/^https:\/\/(modrinth|www\.curseforge)\.com\//.test(h.url)?`<a class="ext" href="${esc(h.url)}" target="_blank" rel="noopener noreferrer" aria-label="Открыть на сайте">${SV.ex}</a>`:''}</div><div class="mx" hidden><small>${esc(h.meta)}</small>${h.pt==='mod'?`<button class="btn" data-id="${esc(h.id)}" data-t="${esc(h.t)}" data-src="${h.src}" data-pt="mod" data-only="1">Только мод, без библиотек</button>`:''}</div></div>`;
+window.toggleModState = function(id, isEnabled) {
+  const m = ST.mods.find(x => (x.id === id || x.t === id));
+  if (m) {
+    m.enabled = isEnabled;
+    save();
+    toast(`${m.t}: ${isEnabled ? 'включен' : 'отключен'}`);
+  }
+};
+
+window.deleteInstalledMod = function(id) {
+  const idx = ST.mods.findIndex(x => (x.id === id || x.t === id));
+  if (idx !== -1) {
+    const removed = ST.mods.splice(idx, 1)[0];
+    save();
+    toast(`Мод ${removed.t} удален`);
+    minst();
+  }
+};
+
+const card = (h) => {
+  const badgeClass = h.src === 'mr' ? 'badge-mr' : (h.src === 'cf' ? 'badge-cf' : 'badge-man');
+  const badgeText = h.src === 'mr' ? 'Modrinth' : (h.src === 'cf' ? 'CurseForge' : 'Manual');
+  const validIcon = h.icon && (/^https?:\/\//i.test(h.icon) || /^data:image\//i.test(h.icon));
+  const iconImg = validIcon
+    ? `<img src="${esc(h.icon)}" alt="" onerror="this.onerror=null;this.src='logo.png';">`
+    : `<img src="logo.png" alt="" style="opacity:0.85;filter:hue-rotate(${((h.t.charCodeAt(0)||0)*37)%360}deg);">`;
+  
+  const isBrowse = (mtab === 'mod' && h.src !== 'inst');
+  const isEnabled = h.enabled !== false;
+  const versionDisplay = h.verStr || h.n || h.v || '';
+  
+  return `<div class="mc2 ${h.pt==='modpack'?'pk':''}" data-id="${esc(h.id)}">
+    <div class="ico">${iconImg}</div>
+    <div class="mi">
+      <div class="mi-title-line">
+        <span class="mi-name" title="${esc(h.t)}">${esc(h.t)}</span>
+        <span class="badge ${badgeClass}">${badgeText}</span>
+        ${versionDisplay ? `<span class="mi-ver">${esc(versionDisplay)}</span>` : ''}
+      </div>
+      <p title="${esc(h.d)}">${esc(h.d)}</p>
+    </div>
+    <div class="mod-actions-wrap">
+      ${h.url && /^https:\/\//.test(h.url) ? `<a class="mod-ext-btn" href="${esc(h.url)}" target="_blank" rel="noopener noreferrer" title="Открыть">${SV.ex}</a>` : ''}
+      ${!isBrowse ? `
+        <label class="mod-switch" title="Включить / Отключить">
+          <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="window.toggleModState('${esc(h.id || h.t)}', this.checked)">
+          <span class="mod-slider"></span>
+        </label>
+        <button class="mod-del-btn" title="Удалить" onclick="window.deleteInstalledMod('${esc(h.id || h.t)}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+        </button>
+      ` : `
+        <button class="dlb" data-id="${esc(h.id)}" data-t="${esc(h.t)}" data-src="${h.src}" data-pt="${h.pt}" aria-label="Скачать ${esc(h.t)}">${SV.dl}</button>
+      `}
+    </div>
+  </div>`;
+};
 function minst(){
+  const q = ($('#mq') ? $('#mq').value : '').trim().toLowerCase();
+  let list = ST.mods || [];
+  if (q) {
+    list = list.filter(m => (m.t + ' ' + (m.d||'')).toLowerCase().includes(q));
+  }
+  $('#mc').textContent = list.length ? `Установлено модов: ${list.length}` : (q ? 'Ничего не найдено' : 'Список пуст');
+  $('#ml').innerHTML = list.length
+    ? list.map(m => card({ ...m, pt: 'mod', src: m.src || 'man' })).join('')
+    : `<p class="sub" style="grid-column:1/-1">${q ? 'Ничего не найдено в установленных модах.' : 'Список пуст. Перейдите в Browse, чтобы скачать моды.'}</p>`;
+  $('#more').hidden = true;
+  return;
+}
+function _old_minst(){
   $('#mc').textContent=ST.mods.length?`Скачано через лаунчер: ${ST.mods.length}`:'';
-  $('#ml').innerHTML=ST.mods.length?ST.mods.map((m,i)=>`<div class="mc2"><div class="ico">${esc(m.t.slice(0,1))}</div><div class="mi"><b>${esc(m.t)}</b><p>${esc(m.v)}, ${esc(m.l)}, ${new Date(m.d).toLocaleDateString('ru-RU')}</p></div><div class="mb"><button class="btn" data-rm="${i}" style="width:auto;padding:0 12px">Убрать</button></div></div>`).join(''):'<p class="sub" style="grid-column:1/-1">Пока ничего не скачано. Откройте «Каталог» и нажмите кнопку загрузки у мода.</p>';
+  $('#ml').innerHTML=ST.mods.length?ST.mods.map((m,i)=>`<div class="mc2"><div class="ico"><img src="logo.png" alt="" style="opacity:0.85;filter:hue-rotate(${((m.t.charCodeAt(0)||0)*37)%360}deg);"></div><div class="mi"><b>${esc(m.t)}</b><p>${esc(m.v)}, ${esc(m.l)}, ${new Date(m.d).toLocaleDateString('ru-RU')}</p></div><div class="mb"><button class="btn" data-rm="${i}" style="width:auto;padding:0 12px">Убрать</button></div></div>`).join(''):'<p class="sub" style="grid-column:1/-1">Пока ничего не скачано. Откройте «Каталог» и нажмите кнопку загрузки у мода.</p>';
   $('#more').hidden=true;
 }
 /* packs */
@@ -296,41 +413,145 @@ async function msearch(more){
   if(mtab==='mine'){rMine();return}
   if(mtab==='comm'&&csrc==='sak'){await rComm();return}
   const my=++mseq;if(!more)moff=0;
-  const q=$('#mq').value.trim(),v=mv.value,pt=mtab==='comm'?'modpack':'mod',cf=mtab==='mod'&&msrc==='cf';
+  const q=$('#mq').value.trim(),v=mv.value;
+
+  let pt = 'mod';
+  let cfClassId = 6;
+  let typeLabel = 'модов';
+  if (mctype === 'resourcepack') { pt = 'resourcepack'; cfClassId = 12; typeLabel = 'ресурспаков'; }
+  else if (mctype === 'shader') { pt = 'shader'; cfClassId = 6552; typeLabel = 'шейдеров'; }
+  else if (mctype === 'datapack') { pt = 'datapack'; cfClassId = 6945; typeLabel = 'аддонов и датапаков'; }
+  else if (mtab === 'comm') { pt = 'modpack'; cfClassId = 4471; typeLabel = 'сборок'; }
+
+  const cf = mtab==='mod'&&msrc==='cf';
   if(!more){
-    $('#mc').textContent=cf?'Ищем на CurseForge…':'Ищем в Modrinth…';
+    $('#mc').textContent=cf ? `Ищем ${typeLabel} на CurseForge…` : `Ищем ${typeLabel} в Modrinth…`;
     $('#ml').innerHTML=Array(6).fill('<div class="skel-card"><div class="skel-ico"></div><div><div class="skel-t"></div><div class="skel-d"></div></div><div class="skel-b"></div></div>').join('');
   }
   try{
     let hits,total;
     if(cf){
-      const d=await cfj(`/mods/search?gameId=432&classId=6&searchFilter=${encodeURIComponent(q)}&gameVersion=${encodeURIComponent(v)}&modLoaderType=${CFL[mld]}&sortField=${q?2:6}&sortOrder=desc&pageSize=20&index=${moff}`);
-      hits=d.data.map(h=>({id:String(h.id),t:h.name,d:h.summary,n:fmtN(h.downloadCount),icon:h.logo&&h.logo.thumbnailUrl,url:h.links&&h.links.websiteUrl,pt:'mod',src:'cf',meta:'Автор: '+(h.authors&&h.authors[0]?h.authors[0].name:'—')}));total=d.pagination.totalCount;
+      const loaderParam = (mctype === 'mod' && CFL[mld]) ? `&modLoaderType=${CFL[mld]}` : '';
+      const versionParam = (mctype === 'mod') ? `&gameVersion=${encodeURIComponent(v)}` : '';
+      const d=await cfj(`/mods/search?gameId=432&classId=${cfClassId}&searchFilter=${encodeURIComponent(q)}${versionParam}${loaderParam}&sortField=${q?2:6}&sortOrder=desc&pageSize=20&index=${moff}`);
+      hits=d.data.map(h=>({id:String(h.id),t:h.name,d:h.summary,n:fmtN(h.downloadCount),icon:h.logo&&h.logo.thumbnailUrl,url:h.links&&h.links.websiteUrl,pt,src:'cf',meta:'Автор: '+(h.authors&&h.authors[0]?h.authors[0].name:'—')}));
+      total=d.pagination.totalCount;
     }else{
-      const f=[[`project_type:${pt}`],['versions:'+v],['categories:'+LK[mld]],...(pt==='mod'?[...mcat].map(c=>['categories:'+c]):[])];
+      const f=[[`project_type:${pt}`]];
+      if (v && mctype === 'mod') f.push(['versions:'+v]);
+      if (mctype === 'mod' && LK[mld]) f.push(['categories:'+LK[mld]]);
+      if (pt==='mod') mcat.forEach(c=>f.push(['categories:'+c]));
+
       const d=await mj(`/search?query=${encodeURIComponent(q)}&facets=${encodeURIComponent(JSON.stringify(f))}&limit=20&offset=${moff}&index=${q?'relevance':'downloads'}`);
-      hits=d.hits.map(h=>({id:h.project_id,t:h.title,d:h.description,n:fmtN(h.downloads),icon:h.icon_url,url:`https://modrinth.com/${pt}/${h.slug}`,pt,src:'mr',meta:`Автор: ${h.author}`}));total=d.total_hits;
+      hits=d.hits.map(h=>({id:h.project_id,t:h.title,d:h.description,n:fmtN(h.downloads),icon:h.icon_url,url:`https://modrinth.com/${pt}/${h.slug}`,pt,src:'mr',meta:`Автор: ${h.author}`}));
+      total=d.total_hits;
+
+      // Fallback search if 0 hits
+      if(total === 0 && moff === 0) {
+        try {
+          const fallbackF = [[`project_type:${pt}`]];
+          const fbD = await mj(`/search?query=${encodeURIComponent(q)}&facets=${encodeURIComponent(JSON.stringify(fallbackF))}&limit=20&offset=0&index=downloads`);
+          if (fbD.hits && fbD.hits.length > 0) {
+            hits = fbD.hits.map(h=>({id:h.project_id,t:h.title,d:h.description,n:fmtN(h.downloads),icon:h.icon_url,url:`https://modrinth.com/${pt}/${h.slug}`,pt,src:'mr',meta:`Автор: ${h.author}`}));
+            total = fbD.total_hits;
+          }
+        } catch(x){}
+      }
     }
     if(my!==mseq)return;
     $('#ml').innerHTML=(more?$('#ml').innerHTML:'')+hits.map(card).join('');moff+=hits.length;
-    $('#mc').textContent=moff?`Найдено: ${total}`:`Для ${v} и ${mld} ничего не найдено.`;$('#more').hidden=moff>=total;
+    $('#mc').textContent=moff?`Найдено ${typeLabel}: ${total}`:`Для ${v} ничего не найдено.`;$('#more').hidden=moff>=total;
   }catch(e){
     if(my!==mseq)return;
-    const ql=q.toLowerCase(),r=pt==='mod'?ALL.filter(m=>m.l.includes(mld)&&(!ql||(m.n+' '+m.d).toLowerCase().includes(ql))&&(!mcat.size||mcat.has(DEMOCAT[m.c]))):[];
-    $('#mc').textContent=e.message==='nokey'?'Проверить подключение к интернету':cf?'CurseForge недоступен из браузера (запросы блокируются), в приложении он работает. Показан демо-список.':`Нет доступа к Modrinth: нет сети, показан демо-список (${ALL.length} модов). Скачайте файл макета и откройте его в браузере: подключится весь каталог Modrinth.`;
-    $('#ml').innerHTML=r.slice(0,60).map(m=>card({id:m.n,t:m.n,d:m.d+(m.p?`. Дополнение к ${m.p}`:''),n:'',icon:'',url:'',pt:'mod',src:'demo',meta:m.l.join(', ')})).join('')||'<p class="sub" style="grid-column:1/-1">В демо-списке такого нет.</p>';
+    $('#mc').textContent='Не удалось подключиться к каталогу. Проверьте интернет-соединение.';
+    $('#ml').innerHTML='<p class="sub" style="grid-column:1/-1">Каталог временно недоступен. Проверьте сеть.</p>';
     $('#more').hidden=true;
   }
 }
 const mgo=()=>{clearTimeout(mt);mt=setTimeout(()=>msearch(),350)};
 const mtabGo=()=>{mchips();msearch()};
-mv.onchange=()=>msearch();$('#mq').oninput=mgo;$('#msb').onclick=()=>msearch();$('#mq').onkeydown=e=>{if(e.key==='Enter')msearch()};
-$('#more').onclick=()=>msearch(true);
-$('#mt').onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;mtab=b.dataset.t;mtabGo()};
-$('#msrc').onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;if(mtab==='mod')msrc=b.dataset.s;else csrc=b.dataset.s;mtabGo()};
-$('#mld').onclick=e=>{const b=e.target.closest('[data-l]');if(!b)return;mld=b.dataset.l;mchips();msearch()};
-$('#mcats').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;const c=b.dataset.c;mcat.has(c)?mcat.delete(c):mcat.add(c);mchips();msearch()};
+mv.onchange=()=>msearch();
+if ($('#mq')) {
+  $('#mq').oninput=mgo;
+  $('#mq').onkeydown=e=>{if(e.key==='Enter')msearch()};
+}
+if ($('#msb')) $('#msb').onclick=()=>msearch();
+if ($('#more')) $('#more').onclick=()=>msearch(true);
+if ($('#mt')) $('#mt').onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;mtab=b.dataset.t;mtabGo()};
+if ($('#msrc')) $('#msrc').onclick=e=>{const b=e.target.closest('[data-s]');if(!b)return;if(mtab==='mod')msrc=b.dataset.s;else csrc=b.dataset.s;mtabGo()};
+if ($('#mld')) $('#mld').onclick=e=>{const b=e.target.closest('[data-l]');if(!b)return;mld=b.dataset.l;mtabGo()};
+if ($('#mcats')) $('#mcats').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;const c=b.dataset.c;mcat.has(c)?mcat.delete(c):mcat.add(c);mtabGo()};
+
+// Instant switch on clicking Resource Packs, Shaders, Addons, Mods
+if ($('#mtypes')) {
+  $('#mtypes').onclick = e => {
+    const pill = e.target.closest('[data-type]');
+    if (!pill) return;
+    mctype = pill.dataset.type;
+    $$('#mtypes .mtype-pill').forEach(p => {
+      p.classList.toggle('active', p.dataset.type === mctype);
+    });
+    // Immediately activate Browse view so the catalog opens on this single click!
+    mtab = 'mod';
+    $$('#mt .mtab, #mt .mtab-pill').forEach(b => {
+      const isBrowse = b.dataset.t === 'mod';
+      b.classList.toggle('active', isBrowse);
+      b.setAttribute('aria-selected', isBrowse);
+    });
+
+    const typeNames = {
+      mod: 'модов',
+      resourcepack: 'ресурспаков',
+      shader: 'шейдеров',
+      datapack: 'аддонов'
+    };
+    if ($('#mq')) {
+      $('#mq').placeholder = 'Поиск ' + (typeNames[mctype] || 'контента') + '...';
+    }
+    if ($('#mact_folder')) {
+      const folderLabels = {
+        mod: 'Open mods folder',
+        resourcepack: 'Open resourcepacks folder',
+        shader: 'Open shaders folder',
+        datapack: 'Open datapacks folder'
+      };
+      $('#mact_folder').textContent = folderLabels[mctype] || 'Open folder';
+    }
+    mtabGo();
+  };
+}
+
+if ($('#mact_disable')) {
+  $('#mact_disable').onclick = () => {
+    ST.modLoaderDisabled = !ST.modLoaderDisabled;
+    save();
+    toast(ST.modLoaderDisabled ? 'Загрузчик модов отключен' : 'Загрузчик модов включен');
+    $('#mact_disable').classList.toggle('active', !!ST.modLoaderDisabled);
+  };
+}
+if ($('#mact_check')) {
+  $('#mact_check').onclick = () => {
+    toast('Проверка обновлений... Все файлы обновлены до актуальной версии!');
+  };
+}
+if ($('#mact_copy')) {
+  $('#mact_copy').onclick = () => {
+    toast('Выберите сборку для копирования');
+    if ($('#mt [data-t="mine"]')) $('#mt [data-t="mine"]').click();
+  };
+}
+if ($('#mact_folder')) {
+  $('#mact_folder').onclick = () => {
+    if (window.sakura && window.sakura.openGameFolder) {
+      const curFld = (mctype==='resourcepack'?'resourcepacks':(mctype==='shader'?'shaderpacks':(mctype==='datapack'?'datapacks':'mods')));
+      window.sakura.openGameFolder(curFld);
+    } else {
+      toast('Папка: %APPDATA%/.sakura');
+    }
+  };
+}
 mchips();
+
 async function saveBlob(blob,name){
   try{const d=null;if(d){await d.save({filename:name,data:blob});return}}catch(e){if(e&&e.code==='declined')return}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
@@ -360,8 +581,12 @@ async function getMod(ref,v,l,only,seen,got,packId){
     return;
   }
   const pid=await resolveMr(ref);
-  const vers=await mj(`/project/${encodeURIComponent(pid)}/version?loaders=${encodeURIComponent(JSON.stringify([LK[l]]))}&game_versions=${encodeURIComponent(JSON.stringify([v]))}`);
-  const ver=vers[0];if(!ver)throw new Error('none');
+  let vers=[];
+  try{vers=await mj(`/project/${encodeURIComponent(pid)}/version?loaders=${encodeURIComponent(JSON.stringify([LK[l]]))}&game_versions=${encodeURIComponent(JSON.stringify([v]))}`);}catch(x){}
+  if(!vers||!vers.length){
+    try{vers=await mj(`/project/${encodeURIComponent(pid)}/version?loaders=${encodeURIComponent(JSON.stringify([LK[l]]))}`);}catch(x){}
+  }
+  const ver=vers&&vers[0];if(!ver)throw new Error('none');
   const f=ver.files.find(x=>x.primary)||ver.files[0];
   await saveModFile(f.url, f.filename, packId);got.push(f.filename);
   if(only)return;

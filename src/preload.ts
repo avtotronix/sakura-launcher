@@ -194,8 +194,8 @@ const sakuraAPI: SakuraAPI = {
 
   versionsMatrix: () => safeInvoke("versions:matrix"),
   launchMinecraft: (opts) => safeInvoke("game:launch", opts),
-  downloadModToPack: (packId: string, url: string, filename: string) =>
-    safeInvoke("pack:download-mod", { packId, url, filename }) as Promise<{ ok: boolean; path: string }>,
+  downloadModToPack: (packId: string, url: string, filename: string, folder?: string) =>
+    safeInvoke("pack:download-mod", { packId, url, filename, folder }) as Promise<{ ok: boolean; path: string }>,
   listInstances: () => safeInvoke("instances:list") as Promise<any[]>,
   createInstance: (opts: { id: string; name: string; desc?: string; v: string; l: string }) =>
     safeInvoke("instances:create", opts) as Promise<boolean>,

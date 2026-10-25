@@ -31,21 +31,26 @@ import { registerLauncherIPC } from "./launcher";
 import { download } from "./net";
 import { startAutoUpdater, registerUpdaterIPC } from "./updater";
 
-import DiscordRPC from "discord-rpc";
-const clientId = '1326922240505184287'; // Generic Discord app ID if you want to use it
-DiscordRPC.register(clientId);
-const rpc = new DiscordRPC.Client({ transport: 'ipc' });
+// Defer Discord RPC to background to avoid blocking launcher startup
+const clientId = '1326922240505184287';
 let rpcReady = false;
-rpc.on('ready', () => {
-  rpcReady = true;
-  rpc.setActivity({
-    details: 'В Sakura Launcher',
-    state: 'Выбирает сборку',
-    startTimestamp: new Date(),
-    instance: false,
-  });
-});
-rpc.login({ clientId }).catch((err) => console.error("Discord RPC failed:", err));
+setTimeout(() => {
+  try {
+    const DiscordRPC = require("discord-rpc");
+    DiscordRPC.register(clientId);
+    const rpc = new DiscordRPC.Client({ transport: 'ipc' });
+    rpc.on('ready', () => {
+      rpcReady = true;
+      rpc.setActivity({
+        details: 'В Sakura Launcher',
+        state: 'Выбирает сборку',
+        startTimestamp: new Date(),
+        instance: false,
+      });
+    });
+    rpc.login({ clientId }).catch(() => {});
+  } catch {}
+}, 3000);
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -100,6 +105,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   "instances:delete-mod",
   "updater:check",
   "updater:open-url",
+  "versions:matrix",
 ]);
 
 // ─── App flags (harden Chromium) ────────────────────────────────────────────
@@ -159,6 +165,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    show: false,
     resizable: false,
     maximizable: false,
     backgroundColor: "#1a191f",
@@ -189,6 +196,13 @@ function createWindow(): void {
   // Load the renderer HTML
   const indexPath = path.join(__dirname, "..", "renderer", "index.html");
   void mainWindow.loadFile(indexPath);
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+  });
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
+  }, 350);
+
 
   if (IS_DEV) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -254,8 +268,8 @@ function applyCSP(): void {
     "script-src 'self' 'unsafe-inline'",   // inline <script> in index.html
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://cdn.modrinth.com https://media.forgecdn.net https://skinsystem.ely.by https://ely.by https://*.ely.by https://*.googleusercontent.com https://minotar.net https://textures.minecraft.net",
-    "connect-src 'self' https://api.modrinth.com https://api.curseforge.com https://skinsystem.ely.by https://ely.by https://*.ely.by https://piston-meta.mojang.com",
+    "img-src 'self' data: blob: https: http:",
+    "connect-src 'self' https: http:",
     "media-src 'none'",
     "object-src 'none'",
     "frame-src 'none'",
@@ -387,11 +401,13 @@ function registerIPC(): void {
 
   ipcMain.handle("pack:download-mod", async (_event, req: any) => {
     if (!req || typeof req !== "object") throw new Error("Bad args");
-    const { packId, url, filename } = req;
-    if (!packId || !url || !filename) throw new Error("Missing parameters");
-    const safePack = path.basename(String(packId));
+    const { packId, url, filename, folder } = req;
+    if (!url || !filename) throw new Error("Missing parameters");
     const safeFile = path.basename(String(filename));
-    const destDir = path.join(getGameDataDir(), "instances", safePack, "mods");
+    const targetFolder = ["mods", "resourcepacks", "shaderpacks", "datapacks"].includes(folder) ? folder : "mods";
+    const destDir = packId
+      ? path.join(getGameDataDir(), "instances", path.basename(String(packId)), targetFolder)
+      : path.join(getGameDataDir(), targetFolder);
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     const dest = path.join(destDir, safeFile);
     await download(String(url), dest);
@@ -551,15 +567,15 @@ void app.whenReady().then(() => {
   registerIPC();
   blockUnknownIPC();
   createWindow();
-  startAutoUpdater(() => mainWindow);
+  setTimeout(() => startAutoUpdater(() => mainWindow), 5000);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-import { build } from "./versions";
-ipcMain.handle("versions:matrix", async () => { return await build(); });
+import { getMatrix } from "./versions";
+ipcMain.handle("versions:matrix", async () => { return await getMatrix(); });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

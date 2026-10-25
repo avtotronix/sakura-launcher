@@ -24,10 +24,12 @@ const ALLOWED_HOSTS = [
   "api.modrinth.com",
   "cdn.modrinth.com",
   "api.curseforge.com",
+  "media.forgecdn.net",
   "edge.forgecdn.net",
   "mediafilez.forgecdn.net",
   "oauth2.googleapis.com",
   "openidconnect.googleapis.com",
+  "api.mcsrvstat.us",
 ];
 
 export function assertAllowed(url: string): URL {

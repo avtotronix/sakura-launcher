@@ -24,9 +24,67 @@ $('#scn').onchange=e=>{setScene(e.target.value);$('#scn').value=ST.scene;save()}
 $('#qs').onchange=e=>{ST.q=e.target.value;document.documentElement.dataset.q=ST.q;if(scene&&scene.gl)scene.build();save()};
 $('#an').onchange=e=>{ST.anim=e.target.checked;rm=!ST.anim;save()};
 $('#phb').onclick=()=>$('#phf').click();
-$('#phf').onchange=async e=>{const f=e.target.files[0];if(!f)return;const ph=SCN.photo||(SCN.photo=mkPhoto());try{await ph.set(f);toast('Фото установлено')}catch(x){toast('Не удалось открыть это фото')}e.target.value=''};
-$('#phd').oninput=e=>{ST.phDim=+e.target.value;save()};
-$('#phbl').oninput=e=>{ST.phBlur=+e.target.value;save()};
+$('#phf').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  e.target.value = '';
+
+  const isVideo = f.type.startsWith('video/') || /\.(mp4|webm|ogg|mov)$/i.test(f.name);
+  if (isVideo) {
+    // Validate video duration: maximum 30 seconds!
+    const blobUrl = URL.createObjectURL(f);
+    const tempVid = document.createElement('video');
+    tempVid.preload = 'metadata';
+    tempVid.src = blobUrl;
+    tempVid.onloadedmetadata = async () => {
+      URL.revokeObjectURL(blobUrl);
+      const dur = tempVid.duration;
+      if (dur > 30.5) {
+        toast(`Видео слишком длинное (${Math.round(dur)} сек.). Максимум 30 секунд!`);
+        return;
+      }
+      try {
+        const ph = SCN.photo || (SCN.photo = mkPhoto());
+        if (window.applyVideoBg) window.applyVideoBg(f);
+        // Save to IndexedDB
+        const idb = () => new Promise((res, rej) => {
+          const r = indexedDB.open('sakura', 1);
+          r.onupgradeneeded = () => r.result.createObjectStore('bg');
+          r.onsuccess = () => res(r.result);
+          r.onerror = () => rej(r.error);
+        });
+        const db = await idb();
+        await new Promise((res, rej) => {
+          const t = db.transaction('bg', 'readwrite');
+          t.objectStore('bg').put(f, 'img');
+          t.oncomplete = res;
+          t.onerror = () => rej(t.error);
+        });
+        toast(`Видео-фон (${Math.round(dur)} сек.) успешно установлен!`);
+      } catch (err) {
+        toast('Ошибка при установке видео');
+      }
+    };
+    tempVid.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      toast('Не удалось прочитать видео-файл');
+    };
+  } else {
+    // Image
+    const ph = SCN.photo || (SCN.photo = mkPhoto());
+    try {
+      if (window.stopVideoBg) window.stopVideoBg();
+      const g = document.getElementById('g');
+      if (g) g.hidden = false;
+      await ph.set(f);
+      toast('Фото установлено');
+    } catch (x) {
+      toast('Не удалось открыть это фото');
+    }
+  }
+};
+$('#phd').oninput=e=>{ST.phDim=+e.target.value;save();if(window.updateBgFilters)window.updateBgFilters()};
+$('#phbl').oninput=e=>{ST.phBlur=+e.target.value;save();if(window.updateBgFilters)window.updateBgFilters()};
 $('#gb').onclick=async()=>{ try { toast('Открываем браузер...'); const r=await window.sakura.accountsGoogle(); if(r.ok) { window.syncAccounts(r); toast('Google подключён'); } else toast('Ошибка: '+r.error); } catch(e){toast('Ошибка: '+e.message);} };
 
 const elyd=$('#elyp');

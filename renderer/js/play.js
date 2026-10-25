@@ -18,11 +18,23 @@ window.fetchVersions = async function() {
 
     let matrix = null;
     if (window.sakura && window.sakura.versionsMatrix) {
-      matrix = await window.sakura.versionsMatrix();
+      try {
+        matrix = await window.sakura.versionsMatrix();
+      } catch(err) {
+        console.warn("versionsMatrix failed, using fallback:", err);
+      }
     }
     
     let items = [];
-    if (matrix && matrix.releases) {
+    if (matrix && Array.isArray(matrix.releases) && matrix.releases.length > 0) {
+      const releaseList = matrix.releases.filter(v => {
+        const type = (matrix.versionTypes && matrix.versionTypes[v]) || 'release';
+        return type === 'release';
+      });
+      if (releaseList.length > 0 && typeof window.updateAllVersionDropdowns === 'function') {
+        window.updateAllVersionDropdowns(releaseList);
+      }
+
       matrix.releases.forEach(v => {
         const type = (matrix.versionTypes && matrix.versionTypes[v]) || 'release';
         const isSnap = type === 'snapshot';
@@ -33,17 +45,19 @@ window.fetchVersions = async function() {
         if (type !== 'release' && !isSnap && !isOld && !ST.showSnap && !ST.showAlpha) return;
         
         items.push({ text: `${v} (Vanilla)`, val: `${v}|Vanilla` });
-        if (matrix.loaders.Fabric && matrix.loaders.Fabric[v]) items.push({ text: `${v} (Fabric)`, val: `${v}|Fabric` });
-        if (matrix.loaders.Forge && matrix.loaders.Forge[v]) items.push({ text: `${v} (Forge)`, val: `${v}|Forge` });
-        if (matrix.loaders.NeoForge && matrix.loaders.NeoForge[v]) items.push({ text: `${v} (NeoForge)`, val: `${v}|NeoForge` });
+        if (matrix.loaders?.Fabric && matrix.loaders.Fabric[v]) items.push({ text: `${v} (Fabric)`, val: `${v}|Fabric` });
+        if (matrix.loaders?.Forge && matrix.loaders.Forge[v]) items.push({ text: `${v} (Forge)`, val: `${v}|Forge` });
+        if (matrix.loaders?.NeoForge && matrix.loaders.NeoForge[v]) items.push({ text: `${v} (NeoForge)`, val: `${v}|NeoForge` });
       });
-    } else {
-      // Fallback
-      items = [
-        { text: '1.21.4 (Vanilla)', val: '1.21.4|Vanilla' },
-        { text: '1.21.4 (Fabric)', val: '1.21.4|Fabric' },
-        { text: '1.20.1 (Forge)', val: '1.20.1|Forge' }
-      ];
+    }
+    
+    if (items.length === 0) {
+      VL.forEach(v => {
+        items.push({ text: `${v} (Vanilla)`, val: `${v}|Vanilla` });
+        items.push({ text: `${v} (Fabric)`, val: `${v}|Fabric` });
+        items.push({ text: `${v} (Forge)`, val: `${v}|Forge` });
+        items.push({ text: `${v} (NeoForge)`, val: `${v}|NeoForge` });
+      });
     }
     
     const curVal = (ST.lastVersion && items.some(it => it.val === ST.lastVersion)) ? ST.lastVersion : (vs.value || items[0].val);
@@ -78,7 +92,7 @@ window.doLaunchGame = async function(e) {
   const psel = document.getElementById('play_pack_sel');
   const packId = psel && psel.value ? psel.value : undefined;
   
-  let v = '1.21.4', l = 'Vanilla';
+  let v = '26.3', l = 'Vanilla';
   if (packId && ST && ST.packs) {
     const p = ST.packs.find(q => q.id === packId);
     if (p) {

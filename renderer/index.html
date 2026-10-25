@@ -4,18 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sakura Launcher</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600&family=Spectral:ital,wght@0,300;0,500;1,300&display=swap">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500&text=桜">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600&family=Spectral:ital,wght@0,300;0,500;1,300&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500&text=桜" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <canvas id="c" aria-hidden="true"></canvas>
 <canvas id="g" aria-hidden="true" hidden></canvas>
+<video id="bg_video" aria-hidden="true" autoplay loop muted playsinline hidden></video>
 <div class="app">
 <nav class="rail" aria-label="Разделы">
 <div class="logo"><img src="logo.png" alt="Sakura" style="height: 36px; object-fit: contain; border-radius: 8px;"><b>Sakura</b></div>
 <button class="n" data-p="play" aria-current="page">Играть</button>
 <button class="n" data-p="mods">Моды</button>
+<button class="n" data-p="servers">Серверы</button>
 <button class="n" data-p="skins">Скины</button>
 <button class="n" data-p="set">Настройки</button>
 
@@ -49,12 +53,33 @@
 </section>
 
 <section id="mods" hidden>
-<div class="mtop">
-<div class="mtabs" id="mt" role="tablist" aria-label="Раздел"><button class="mtab" role="tab" data-t="mod" aria-selected="true">Каталог</button><button class="mtab" role="tab" data-t="mine" aria-selected="false">Мои сборки</button><button class="mtab" role="tab" data-t="comm" aria-selected="false">Сообщество</button></div>
+<div class="mtype-row" id="mtypes">
+  <button class="mtype-pill active" data-type="mod">Mods</button>
+  <button class="mtype-pill" data-type="resourcepack">Resource Packs</button>
+  <button class="mtype-pill" data-type="shader">Shaders</button>
+  <button class="mtype-pill" data-type="datapack">Addons</button>
+</div>
+<div class="mtop-bar">
+  <div class="mtop-left">
+    <div class="mtabs-pills" id="mt">
+      <button class="mtab-pill active" data-t="inst" aria-selected="true">Installed</button>
+      <button class="mtab-pill" data-t="mod" aria-selected="false">Browse</button>
+      <button class="mtab-pill" data-t="mine" aria-selected="false">Modpacks</button>
+    </div>
+    <button class="mact-btn" id="mact_disable">Disable mod loader</button>
+    <button class="mact-btn" id="mact_check">Check Updates</button>
+    <button class="mact-btn" id="mact_copy">Copy from Instance</button>
+    <button class="mact-btn" id="mact_folder">Open mods folder</button>
+  </div>
+  <div class="mtop-right">
 <div class="seg" id="msrc" role="group" aria-label="Источник"></div>
 <div class="seg" id="mld" role="group" aria-label="Загрузчик"></div>
 <select id="mv" aria-label="Версия игры"></select>
-<div class="msearch"><input type="text" id="mq" placeholder="Поиск модов" aria-label="Название" autocomplete="off"><button class="btn on" id="msb" aria-label="Найти"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button></div>
+    <div class="msearch-input-wrap">
+      <svg class="msearch-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="text" id="mq" placeholder="Search installed..." autocomplete="off">
+    </div>
+  </div>
 </div>
 <div class="mbody">
 <aside class="mcat" id="mcw"><h3>Категории</h3><div id="mcats"></div></aside>
@@ -65,6 +90,49 @@
 </div>
 </div>
 </section>
+
+<section id="servers" hidden>
+  <div class="srv-header">
+    <div class="srv-header-left">
+      <h1 style="margin:0">Серверы Minecraft</h1>
+      <p class="sub" style="margin:4px 0 0" id="srv_count">Популярные сервера с поддержкой всех версий от 1.7.10 до 26.3</p>
+    </div>
+    <div class="srv-header-right">
+      <div class="msearch-input-wrap" style="width:260px">
+        <svg class="msearch-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="text" id="srv_search_input" placeholder="Поиск сервера..." autocomplete="off">
+      </div>
+      <button class="btn on" onclick="window.openAddServerDialog()">+ Добавить сервер</button>
+    </div>
+  </div>
+
+  <div class="seg" id="srv_filter_chips" style="margin:14px 0 16px; flex-wrap:wrap; gap:6px;">
+    <button class="chip" aria-pressed="true" data-mode="Все">Все серверы</button>
+    <button class="chip" aria-pressed="false" data-mode="Анархия">Анархия</button>
+    <button class="chip" aria-pressed="false" data-mode="Гриферство">Гриферство</button>
+    <button class="chip" aria-pressed="false" data-mode="Выживание">Выживание</button>
+    <button class="chip" aria-pressed="false" data-mode="Мини-игры">Мини-игры</button>
+    <button class="chip" aria-pressed="false" data-mode="BedWars">BedWars</button>
+    <button class="chip" aria-pressed="false" data-mode="SkyBlock">SkyBlock</button>
+    <button class="chip" aria-pressed="false" data-mode="Дуэли">Дуэли / PvP</button>
+  </div>
+
+  <div class="srv-grid" id="srv_list"></div>
+</section>
+
+<dialog id="srv_add_dialog" aria-labelledby="srv_add_t">
+  <h2 id="srv_add_t" style="margin-top:0">Добавить свой сервер</h2>
+  <label for="srv_add_name">Название сервера</label>
+  <input type="text" id="srv_add_name" maxlength="48" placeholder="Например: Мой любимый сервер" autocomplete="off">
+  <label for="srv_add_ip">IP адрес / Домен</label>
+  <input type="text" id="srv_add_ip" maxlength="64" placeholder="например: play.myserver.ru" autocomplete="off">
+  <label for="srv_add_desc">Описание (необязательно)</label>
+  <input type="text" id="srv_add_desc" maxlength="200" placeholder="Выживание с друзьями, кланы...">
+  <div class="acts2" style="margin-top:16px">
+    <button class="btn" onclick="window.closeAddServerDialog()">Отмена</button>
+    <button class="btn on" onclick="window.saveNewServer()">Сохранить</button>
+  </div>
+</dialog>
 
 <section id="skins" hidden>
 <h1>Скины</h1>
@@ -138,11 +206,11 @@
 
 <h2>Внешний вид</h2>
 <label for="scn">Тема</label>
-<select id="scn"><option value="sakura">Сакура</option><option value="aurora">Полярное сияние</option><option value="forest">Лес</option><option value="sunset">Закат</option><option value="photo">Своё фото</option></select>
+<select id="scn"><option value="sakura">Сакура</option><option value="aurora">Полярное сияние</option><option value="forest">Лес</option><option value="sunset">Закат</option><option value="photo">Свой фон (фото / видео до 30 сек)</option></select>
 <label for="qs">Качество фона</label>
 <select id="qs"><option value="auto">Авто (рекомендуется)</option><option value="high">Высокое</option><option value="low">Экономное</option></select>
 <label class="chk"><input type="checkbox" id="an" checked> Анимированный фон</label>
-<div id="phs" hidden><button class="btn" id="phb" style="margin-top:10px">Выбрать фото</button><input type="file" id="phf" accept="image/*" hidden><label for="phd">Затемнение</label><input type="range" id="phd" min="0" max="80" value="25"><label for="phbl">Размытие</label><input type="range" id="phbl" min="0" max="14" value="0"></div>
+<div id="phs" hidden><button class="btn" id="phb" style="margin-top:10px">Выбрать фото или видео (до 30 сек)</button><input type="file" id="phf" accept="image/*,video/mp4,video/webm,video/ogg,video/quicktime" hidden><label for="phd">Затемнение</label><input type="range" id="phd" min="0" max="80" value="25"><label for="phbl">Размытие</label><input type="range" id="phbl" min="0" max="14" value="0"></div>
 <label class="chk"><input type="checkbox" id="pt" checked> Частицы сцены (лепестки, снег, светлячки)</label>
 <label for="wd">Ветер</label>
 <input type="range" id="wd" min="0" max="10" value="5">
@@ -257,7 +325,7 @@
 </dialog>
 <dialog id="update_dlg" style="background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;padding:24px;width:min(440px,90vw);color:var(--ink);box-shadow:0 12px 40px rgba(0,0,0,.35)">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-    <span style="font-size:32px;line-height:1">🌸</span>
+    
     <div>
       <h3 style="margin:0;font-size:18px;font-weight:700" id="upd_title">Доступно обновление!</h3>
       <small style="color:var(--mute)" id="upd_version">Вышла новая версия лаунчера</small>
@@ -275,6 +343,7 @@
 <script src="js/webgl.js"></script>
 <script src="js/play.js"></script>
 <script src="js/mods.js"></script>
+<script src="js/servers.js"></script>
 <script src="js/skins.js"></script>
 
 <script src="js/folders.js"></script>
