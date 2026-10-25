@@ -1,0 +1,7 @@
+{
+  "version": "0.1.1",
+  "title": "Sakura Launcher v0.1.1",
+  "changelog": "• Исправлена ошибка «Используйте лицензионный аккаунт» при входе на FunTime и другие серверы\n• Налажено сохранение сборок модов и версий при перезапуске\n• Исправлен сброс скина\n• Добавлена автоматическая проверка обновлений",
+  "downloadUrl": "https://github.com/SakuraLauncher/releases/latest",
+  "mandatory": false
+}

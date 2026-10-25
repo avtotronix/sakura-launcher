@@ -1,0 +1,80 @@
+{
+  "name": "sakura-launcher",
+  "productName": "Sakura Launcher",
+  "version": "0.1.1",
+  "description": "Sakura Minecraft Launcher",
+  "main": "dist/main.js",
+  "author": "Sakura Team",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.main.json && tsc -p tsconfig.preload.json",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron . --dev",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder --win",
+    "dist:portable": "npm run build && electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.sakura.launcher",
+    "productName": "Sakura Launcher",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sakura Launcher",
+      "uninstallDisplayName": "Sakura Launcher",
+      "artifactName": "Sakura-Launcher-Installer.${ext}",
+      "include": "installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Sakura Launcher.exe"
+    },
+    "files": [
+      "dist/**/*",
+      "renderer/**/*",
+      "logo.png",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "npmRebuild": false
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/discord-rpc": "^4.0.11",
+    "@types/node": "^24.0.0",
+    "electron": "^36.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "discord-rpc": "^4.0.1",
+    "minecraft-launcher-core": "^3.18.2",
+    "msmc": "^5.0.5",
+    "node-fetch": "^3.3.2"
+  }
+}

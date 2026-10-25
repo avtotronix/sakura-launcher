@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sakura Launcher</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600&family=Spectral:ital,wght@0,300;0,500;1,300&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500&text=桜">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<canvas id="g" aria-hidden="true" hidden></canvas>
+<div class="app">
+<nav class="rail" aria-label="Разделы">
+<div class="logo"><img src="logo.png" alt="Sakura" style="height: 36px; object-fit: contain; border-radius: 8px;"><b>Sakura</b></div>
+<button class="n" data-p="play" aria-current="page">Играть</button>
+<button class="n" data-p="mods">Моды</button>
+<button class="n" data-p="skins">Скины</button>
+<button class="n" data-p="set">Настройки</button>
+
+<div class="user-card-rail" id="rail_user" onclick="if(document.getElementById('play_acc_btn'))document.getElementById('play_acc_btn').click()">
+  <div class="rail-avatar" id="rail_avatar">G</div>
+  <div class="rail-uinfo">
+    <div class="rail-uname" id="rail_name">Гость</div>
+    <div class="rail-ustatus" id="rail_status">Оффлайн</div>
+  </div>
+</div>
+<div id="who" hidden>Гость</div>
+</nav>
+<main><div class="panel">
+
+<section id="play">
+<h1>Играть</h1>
+<p class="sub">Выберите версию и загрузчик. Играть можно только с установленным Fabric, Forge или NeoForge. Пока идёт установка, сцена оживает.</p>
+
+  <label>Сборка модов</label>
+  <select id="play_pack_sel" style="margin-bottom:12px"></select>
+  <label>Аккаунт</label>
+  <button class="btn" id="play_acc_btn" style="width:100%;margin-bottom:12px;padding:12px;border-radius:10px;text-align:left;border-color:var(--line);background:var(--field);color:var(--ink)">Выбрать аккаунт...</button>
+  <label for="ver">Версия Minecraft</label>
+  
+<select id="ver"></select>
+
+
+<button class="go" id="go">Играть</button>
+<div class="bar" aria-hidden="true"><i id="bi"></i></div>
+<p class="sub" id="st" role="status" style="margin:10px 0 0"></p>
+</section>
+
+<section id="mods" hidden>
+<div class="mtop">
+<div class="mtabs" id="mt" role="tablist" aria-label="Раздел"><button class="mtab" role="tab" data-t="mod" aria-selected="true">Каталог</button><button class="mtab" role="tab" data-t="mine" aria-selected="false">Мои сборки</button><button class="mtab" role="tab" data-t="comm" aria-selected="false">Сообщество</button></div>
+<div class="seg" id="msrc" role="group" aria-label="Источник"></div>
+<div class="seg" id="mld" role="group" aria-label="Загрузчик"></div>
+<select id="mv" aria-label="Версия игры"></select>
+<div class="msearch"><input type="text" id="mq" placeholder="Поиск модов" aria-label="Название" autocomplete="off"><button class="btn on" id="msb" aria-label="Найти"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button></div>
+</div>
+<div class="mbody">
+<aside class="mcat" id="mcw"><h3>Категории</h3><div id="mcats"></div></aside>
+<div>
+<p class="sub" id="mc" role="status" style="margin:0 0 10px"></p>
+<div class="mgrid" id="ml"></div>
+<button class="btn" id="more" style="margin-top:14px" hidden>Показать ещё</button>
+</div>
+</div>
+</section>
+
+<section id="skins" hidden>
+<h1>Скины</h1>
+<p class="sub" id="ss" role="status" style="margin:0">Загрузите свой PNG-скин или возьмите скин со своего аккаунта Ely.by.</p>
+<div class="sk">
+<div class="vw">
+<canvas id="sk" width="360" height="480" tabindex="0" aria-label="Скин в 3D. Потяните или используйте стрелки, чтобы повернуть"></canvas>
+<canvas id="sx" width="64" height="64" hidden aria-label="Развёртка скина"></canvas>
+</div>
+<div class="ctl">
+<b class="big" id="sn">Steve</b>
+<small class="sub" id="sd" style="margin:2px 0 0">Стандартный скин.</small>
+<label>Поза</label>
+<div class="seg" id="pz" role="group" aria-label="Поза" style="margin:0"><button class="chip" aria-pressed="true" data-z="idle">Стоя</button><button class="chip" aria-pressed="false" data-z="walk">Ходьба</button><button class="chip" aria-pressed="false" data-z="run">Бег</button></div>
+<label>Вид</label>
+<div class="seg" id="vz" role="group" aria-label="Вид" style="margin:0"><button class="chip" aria-pressed="true" data-v="3d">Объём</button><button class="chip" aria-pressed="false" data-v="2d">Развёртка</button></div>
+<label class="chk"><input type="checkbox" id="lay" checked> Внешний слой (шапка, куртка)</label>
+<label class="chk" style="margin-top:8px"><input type="checkbox" id="spin"> Вращать</label>
+<div class="acts3">
+<button class="btn on" id="upb">Загрузить свой PNG</button>
+
+<button class="btn" id="dlp">Скачать PNG</button>
+
+<input type="file" id="up" accept="image/png" hidden>
+</div>
+</div>
+</div>
+</section>
+
+
+
+
+
+<section id="set" hidden>
+<h1>Настройки</h1>
+<p class="sub">Игра, внешний вид и аккаунты.</p>
+<h2>Аккаунты</h2>
+<div class="row"><div><b>Sakura</b><small id="gs">Используйте Google для удобного входа</small></div><button class="btn" id="gb">Войти через Google</button></div>
+
+
+<h2>Игра</h2>
+<label for="ram">Память: <span id="rv">4 ГБ</span></label>
+<input type="range" id="ram" min="2" max="16" value="4">
+<label for="java">Java</label>
+<select id="java"><option>Подобрать автоматически</option><option>Java 21</option><option>Java 17</option><option>Java 8</option></select>
+<label for="dir">Папка игры</label>
+<input type="text" id="dir" value="%APPDATA%\.sakura">
+<label class="chk"><input type="checkbox" id="cl"> Закрывать лаунчер после запуска игры</label>
+<label class="chk" style="margin-top:8px"><input type="checkbox" id="elyAuth"> Авторизация Ely.by на серверах (authlib-injector)</label>
+<small class="sub" style="display:block;margin:2px 0 10px 24px;font-size:12px;color:var(--mute)">Выключено: подключение к FunTime и другим серверам без ошибки лицензии. Включайте, только если сервер требует Ely.by.</small>
+
+<label>Типы версий в списке</label>
+<div class="c-sel-wrap" id="ver_types_wrap">
+  <button class="c-sel-head" type="button" onclick="this.parentElement.classList.toggle('open');event.stopPropagation()">Выбрать типы версий</button>
+  <div class="c-sel-list" id="ver_types_list" style="padding:10px;gap:10px;">
+    <label class="chk" style="margin:0;cursor:pointer"><input type="checkbox" id="showSnap"> Показывать снапшоты</label>
+    <label class="chk" style="margin:0;cursor:pointer"><input type="checkbox" id="showAlpha"> Показывать Alpha / Beta</label>
+  </div>
+</div>
+
+<label for="jvm_args">Аргументы Java (JVM)</label>
+<input type="text" id="jvm_args" placeholder="-XX:+UseG1GC -Dsun.rmi.dgc.server.gcInterval=2147483646" style="margin-bottom:8px">
+
+<label>Разрешение игры</label>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+  <input type="text" id="game_w" value="1280" style="width:90px;text-align:center">
+  <span style="color:var(--mute)">×</span>
+  <input type="text" id="game_h" value="720" style="width:90px;text-align:center">
+  <label class="chk" style="margin:0 0 0 12px"><input type="checkbox" id="game_fs"> Полный экран</label>
+</div>
+
+<h2>Внешний вид</h2>
+<label for="scn">Тема</label>
+<select id="scn"><option value="sakura">Сакура</option><option value="aurora">Полярное сияние</option><option value="forest">Лес</option><option value="sunset">Закат</option><option value="photo">Своё фото</option></select>
+<label for="qs">Качество фона</label>
+<select id="qs"><option value="auto">Авто (рекомендуется)</option><option value="high">Высокое</option><option value="low">Экономное</option></select>
+<label class="chk"><input type="checkbox" id="an" checked> Анимированный фон</label>
+<div id="phs" hidden><button class="btn" id="phb" style="margin-top:10px">Выбрать фото</button><input type="file" id="phf" accept="image/*" hidden><label for="phd">Затемнение</label><input type="range" id="phd" min="0" max="80" value="25"><label for="phbl">Размытие</label><input type="range" id="phbl" min="0" max="14" value="0"></div>
+<label class="chk"><input type="checkbox" id="pt" checked> Частицы сцены (лепестки, снег, светлячки)</label>
+<label for="wd">Ветер</label>
+<input type="range" id="wd" min="0" max="10" value="5">
+<h2>О лаунчере</h2>
+<div class="row"><div><b id="app_ver_txt">Sakura Launcher</b><small id="app_upd_sub">Проверка обновлений каждые 15 минут</small></div><button class="btn" id="check_upd_btn">Проверить обновления</button></div>
+</section>
+
+
+  <section id="pack_view" class="pack_view_style" hidden>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-shrink:0;">
+      <button class="btn" onclick="document.querySelector('[data-p=\'mods\']').click()">&larr; Назад</button>
+      <h1 id="packt" style="margin:0">Настройки сборки</h1>
+    </div>
+    <div class="tab-btns" style="flex-shrink:0;">
+      <button class="tab-btn act" id="pack_tab_settings">Настройки</button>
+      <button class="tab-btn" id="pack_tab_mods">Список модов</button>
+    </div>
+    <div id="pack_settings_view" style="flex: 1; overflow-y: auto; margin-top: 16px;">
+      <p id="pack_desc_view" style="font-size:14px; color:var(--mute); margin-bottom: 16px;"></p>
+      
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+        <div style="background:var(--field); border:1px solid var(--line); border-radius:12px; padding:12px;">
+          <small style="color:var(--mute); display:block;">Время в игре</small>
+          <b id="pack_playtime" style="font-size:18px; margin-top:4px; display:block;">0 мин.</b>
+        </div>
+        <div style="background:var(--field); border:1px solid var(--line); border-radius:12px; padding:12px;">
+          <small style="color:var(--mute); display:block;">Версия и загрузчик</small>
+          <b id="pack_ver_info" style="font-size:15px; margin-top:4px; display:block;">-</b>
+        </div>
+        <div style="background:var(--field); border:1px solid var(--line); border-radius:12px; padding:12px;">
+          <small style="color:var(--mute); display:block;">Модов установлено</small>
+          <b id="pack_mods_count" style="font-size:18px; margin-top:4px; display:block;">0</b>
+        </div>
+        <div style="background:var(--field); border:1px solid var(--line); border-radius:12px; padding:12px;">
+          <small style="color:var(--mute); display:block;">Дата создания</small>
+          <b id="pack_created_date" style="font-size:15px; margin-top:4px; display:block;">-</b>
+        </div>
+      </div>
+
+      <div class="acts2" style="margin-top: 16px; flex-wrap: wrap; gap: 8px;">
+        <button class="btn" id="pack_folder_btn" onclick="if(window.openPackFolder)window.openPackFolder()">Папка сборки</button>
+        <button class="btn" style="color:#ff5555; border-color:#ff5555" id="pack_delete_btn">Удалить сборку</button>
+      </div>
+    </div>
+    <div id="pack_mods_view" hidden style="flex: 1; overflow-y: auto; margin-top: 16px;">
+      <div id="pack_mods_list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+  </section>
+  </div></main>
+</div>
+
+  <dialog id="elyp" aria-labelledby="elyt">
+    <h2 id="elyt" style="margin-top:0">Вход через Ely.by</h2>
+    <div id="eya">
+      <label for="eyn">Никнейм или Email</label>
+      <input type="text" id="eyn" maxlength="128" autocomplete="off" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')window.doAuthElyFinish()">
+      <label for="eyp">Пароль</label>
+      <input type="password" id="eyp" maxlength="256" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')window.doAuthElyFinish()">
+      <p class="sub" id="eye" role="alert" style="margin:6px 0 0; color:red"></p>
+      <div class="acts2"><button class="btn" id="eyc" onclick="document.getElementById('elyp').close()">Отмена</button><button class="btn on" id="eyk">Войти</button></div>
+    </div>
+    <p id="eyr" hidden style="margin:12px 0 0">Авторизация...</p>
+  </dialog>
+  <dialog id="offp" aria-labelledby="offt">
+    <h2 id="offt" style="margin-top:0">Оффлайн аккаунт</h2>
+    <div>
+      <label for="offn">Никнейм</label>
+      <input type="text" id="offn" maxlength="32" autocomplete="off" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')window.doAuthOffFinish()">
+      <div class="acts2">
+        <button class="btn" onclick="document.getElementById('offp').close()">Отмена</button>
+        <button class="btn on" onclick="window.doAuthOffFinish()">Добавить</button>
+      </div>
+    </div>
+  </dialog>
+  
+<dialog id="pkd" aria-labelledby="pkt">
+<h2 id="pkt" style="margin-top:0">Добавить в сборку</h2>
+<p class="sub" id="pkm" style="margin:0"></p>
+<label for="pks">Сборка</label><select id="pks"></select>
+<div class="acts2"><button class="btn" id="pkc">Отмена</button><button class="btn on" id="pko">Добавить</button></div>
+</dialog>
+<dialog id="pkn" aria-labelledby="pnt">
+<h2 id="pnt" style="margin-top:0">Новая сборка</h2>
+<label for="pnn">Название</label><input type="text" id="pnn" maxlength="48" autocomplete="off">
+<label for="pnd">Описание: что в этой сборке</label><textarea id="pnd" maxlength="600" placeholder="Например: сборка для выживания с оптимизацией, картой и удобным инвентарём"></textarea>
+<div class="mrow" style="margin-top:4px"><div><label for="pnv">Версия</label><select id="pnv"></select></div><div><label for="pnl">Загрузчик</label><select id="pnl"></select></div></div>
+<p class="sub" id="pne" role="alert" style="margin:8px 0 0"></p>
+<div class="acts2"><button class="btn" id="pnc">Отмена</button><button class="btn on" id="pnok">Создать</button></div>
+</dialog>
+<input type="file" id="pimp" accept=".json,application/json" hidden>
+<div class="t" id="t" role="status"></div>
+
+<dialog id="acc_dlg" aria-labelledby="acct" onclick="if(event.target===this)this.close()">
+  <h2 id="acct" style="margin-top:0">Выбор аккаунта</h2>
+  <div id="acc_list" style="margin-bottom:16px;max-height:300px;overflow-y:auto"></div>
+  <h3 style="margin-bottom:8px">Добавить новый</h3>
+  <div class="acts2" style="justify-content:flex-start;flex-wrap:wrap;gap:8px">
+    <button class="btn" id="dlg_add_off">Оффлайн</button>
+    <button class="btn" id="dlg_add_ms">Microsoft</button>
+    <button class="btn" id="dlg_add_ely">Ely.by</button>
+  </div>
+  <div class="acts2" style="margin-top:16px"><button class="btn on" onclick="document.getElementById('acc_dlg').close()">Закрыть</button></div>
+</dialog>
+
+<dialog id="confirm_dlg" style="background:#232227;border:1px solid var(--line);border-radius:16px;padding:24px;max-width:380px;color:var(--ink)" onclick="if(event.target===this)this.close()">
+  <h3 id="confirm_title" style="margin:0 0 12px">Подтверждение</h3>
+  <p id="confirm_msg" style="margin:0 0 20px;color:var(--mute)"></p>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+    <button class="btn" onclick="document.getElementById('confirm_dlg').close()">Отмена</button>
+    <button class="btn on" id="confirm_ok" style="background:#ff5555;border-color:#ff5555">Удалить</button>
+  </div>
+</dialog>
+<dialog id="update_dlg" style="background:var(--panel);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;padding:24px;width:min(440px,90vw);color:var(--ink);box-shadow:0 12px 40px rgba(0,0,0,.35)">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+    <span style="font-size:32px;line-height:1">🌸</span>
+    <div>
+      <h3 style="margin:0;font-size:18px;font-weight:700" id="upd_title">Доступно обновление!</h3>
+      <small style="color:var(--mute)" id="upd_version">Вышла новая версия лаунчера</small>
+    </div>
+  </div>
+  <p style="margin:0 0 8px;font-size:13px;color:var(--mute)">Что нового в этой версии:</p>
+  <div id="upd_changelog" style="background:var(--field);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px;white-space:pre-wrap;max-height:160px;overflow-y:auto;margin-bottom:18px;line-height:1.45"></div>
+  <div style="display:flex;justify-content:flex-end;gap:10px">
+    <button class="btn" id="upd_later_btn">Позже</button>
+    <button class="btn on" id="upd_action_btn" style="font-weight:600">Обновить лаунчер</button>
+  </div>
+</dialog>
+<script src="electron-adapter.js"></script>
+  <script src="js/core.js"></script>
+<script src="js/webgl.js"></script>
+<script src="js/play.js"></script>
+<script src="js/mods.js"></script>
+<script src="js/skins.js"></script>
+
+<script src="js/folders.js"></script>
+<script src="js/settings.js"></script>
+
+</body>
+</html>
