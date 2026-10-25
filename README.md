@@ -7,9 +7,16 @@
   **Быстрый, стильный и современный лаунчер для Minecraft на базе Electron и TypeScript.**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-pink.svg?style=for-the-badge)](LICENSE)
-  [![Electron](https://img.shields.io/badge/Electron-36.0.0-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
-  [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-  [![Minecraft](https://img.shields.io/badge/Minecraft-Launcher-388E3C?style=for-the-badge&logo=minecraft&logoColor=white)](https://minecraft.net/)
+  [![Release](https://img.shields.io/badge/Release-v0.1.2-00ff66?style=for-the-badge&logo=github)](https://github.com/avtotronix/sakura-launcher/releases/latest)
+  [![Platform](https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge&logo=windows)](https://github.com/avtotronix/sakura-launcher/releases/latest)
+
+  <br/>
+
+  ### 📥 Скачать для Windows:
+  
+  [<img src="https://img.shields.io/badge/Скачать-Установщик_(EXE)-2ea44f?style=for-the-badge&logo=windows&logoColor=white" height="38"/>](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.2/Sakura-Launcher-Installer.exe)
+  &nbsp;&nbsp;
+  [<img src="https://img.shields.io/badge/Скачать-Portable_Версию-555555?style=for-the-badge&logo=files&logoColor=white" height="38"/>](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.2/Sakura-Launcher-Portable.exe)
 
 </div>
 
