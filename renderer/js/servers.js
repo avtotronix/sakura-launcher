@@ -214,36 +214,71 @@ window.playOnServer = function(ip) {
   }
 };
 
-window.renderServers = async function() {
+
+let curServerPage = 1;
+let totalServerPages = 1;
+let currentServerList = [];
+let favServerSet = new Set();
+
+window.renderServers = async function(more = false) {
   const container = document.getElementById('srv_list');
   if (!container) return;
 
-  const q = srvQuery.trim().toLowerCase();
-  let list = getStoredServers();
-
-  if (srvFilter !== 'Все') {
-    list = list.filter(s => s.modes.some(m => m.toLowerCase().includes(srvFilter.toLowerCase())));
+  if (!more) {
+    curServerPage = 1;
+    currentServerList = [];
   }
 
-  if (q) {
-    list = list.filter(s =>
-      s.name.toLowerCase().includes(q) ||
-      s.ip.toLowerCase().includes(q) ||
-      s.desc.toLowerCase().includes(q) ||
-      s.modes.some(m => m.toLowerCase().includes(q))
-    );
+  const q = srvQuery.trim().toLowerCase();
+
+  if (window.sakura && window.sakura.getServerFavorites) {
+    try {
+      const favs = await window.sakura.getServerFavorites();
+      favServerSet = new Set(favs);
+    } catch(e) {}
+  }
+
+  let list = [];
+  let total = 0;
+
+  if (window.sakura && window.sakura.queryServers) {
+    try {
+      const res = await window.sakura.queryServers({
+        search: q,
+        mode: srvFilter,
+        page: curServerPage,
+        pageSize: 30
+      });
+      total = res.total;
+      totalServerPages = res.totalPages;
+      list = res.servers;
+      currentServerList = more ? [...currentServerList, ...list] : list;
+    } catch(err) {
+      console.warn("Catalog query failed, using local servers:", err);
+      list = getStoredServers();
+      total = list.length;
+      currentServerList = list;
+    }
+  } else {
+    list = getStoredServers();
+    total = list.length;
+    currentServerList = list;
   }
 
   const countBadge = document.getElementById('srv_count');
-  if (countBadge) countBadge.textContent = 'Доступно серверов: ' + list.length;
+  if (countBadge) countBadge.textContent = 'Доступно серверов в каталоге: ' + total;
 
-  container.innerHTML = list.map(s => {
+  const cardsHtml = currentServerList.map(s => {
     const cached = srvOnlineCache[s.ip];
     const onlineText = cached && cached.online
       ? '<span class="srv-online-badge live"><span class="srv-pulse"></span> ' + cached.players.toLocaleString() + ' игроков</span>'
-      : '<span class="srv-online-badge"><span class="srv-pulse"></span> ~' + s.onlineFallback.toLocaleString() + ' игроков</span>';
+      : '<span class="srv-online-badge"><span class="srv-pulse"></span> ~' + (s.onlineFallback || 500).toLocaleString() + ' игроков</span>';
 
-    const iconSrc = (cached && cached.icon) ? cached.icon : s.icon;
+    const initials = (s.name || 'MC').replace(/[^a-zA-Z0-9а-яА-Я]/g, '').slice(0, 3).toUpperCase() || 'MC';
+    const hue = (s.name.charCodeAt(0) * 47) % 360;
+    const defIcon = s.icon || makeSvgAvatar(initials, `hsl(${hue}, 70%, 45%)`, `hsl(${(hue + 40) % 360}, 80%, 35%)`);
+    const iconSrc = (cached && cached.icon) ? cached.icon : defIcon;
+    const isFav = favServerSet.has(s.id) || favServerSet.has(s.ip);
 
     return '<div class="srv-card" data-ip="' + s.ip + '">' +
       '<div class="srv-card-top">' +
@@ -252,11 +287,12 @@ window.renderServers = async function() {
           '<div class="srv-title-row">' +
             '<span class="srv-name">' + s.name + '</span>' +
             onlineText +
-            '<span class="srv-ver-badge">' + s.versions + '</span>' +
+            '<span class="srv-ver-badge">' + (s.versions || '1.7.10 — 26.3') + '</span>' +
+            (s.platform ? '<span class="badge badge-mr" style="text-transform:capitalize">' + s.platform + '</span>' : '') +
           '</div>' +
-          '<p class="srv-desc">' + s.desc + '</p>' +
+          '<p class="srv-desc">' + (s.desc || '') + '</p>' +
           '<div class="srv-tags">' +
-            s.modes.map(m => '<span class="srv-tag">' + m + '</span>').join('') +
+            (s.modes || []).map(m => '<span class="srv-tag">' + m + '</span>').join('') +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -277,8 +313,14 @@ window.renderServers = async function() {
     '</div>';
   }).join('');
 
-  // Async ping servers in background to show real live player counts AND update real server icons
-  list.forEach(async s => {
+  const moreBtnHtml = (curServerPage < totalServerPages)
+    ? '<div style="grid-column:1/-1;text-align:center;margin-top:16px"><button class="btn" id="srv_load_more_btn" style="padding:10px 24px" onclick="window.loadMoreServers()">Показать ещё серверы</button></div>'
+    : '';
+
+  container.innerHTML = cardsHtml + moreBtnHtml;
+
+  // Background live ping for visible servers
+  list.slice(0, 15).forEach(async s => {
     const data = await pingServer(s.ip);
     if (data) {
       const card = container.querySelector('[data-ip="' + s.ip + '"]');
@@ -298,6 +340,12 @@ window.renderServers = async function() {
     }
   });
 };
+
+window.loadMoreServers = function() {
+  curServerPage++;
+  window.renderServers(true);
+};
+
 
 window.openAddServerDialog = function() {
   const dlg = document.getElementById('srv_add_dialog');

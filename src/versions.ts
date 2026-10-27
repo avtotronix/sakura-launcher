@@ -6,12 +6,13 @@ import fs from "fs";
 import path from "path";
 import { getJson } from "./net";
 
-export type Loader = "Fabric" | "Forge" | "NeoForge" | "Vanilla";
+export type Loader = "Fabric" | "Forge" | "NeoForge" | "Quilt" | "Vanilla";
 export interface Matrix {
   releases: string[]; // newest first
   versionTypes: Record<string, string>;
   latest: string;
   loaders: Record<Loader, Record<string, string>>; // mc -> loader version
+  loaderVersions?: Record<Loader, Record<string, string[]>>; // mc -> all available loader versions
   fetchedAt: number;
 }
 
@@ -72,12 +73,13 @@ export function neoToMc(v: string): string | null {
 }
 
 export async function build(): Promise<Matrix> {
-  const [man, fab, fabLoaders, forge, neo] = await Promise.allSettled([
+  const [man, fab, fabLoaders, forge, neo, quiltLoaders] = await Promise.allSettled([
     getJson<any>("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"),
     getJson<any[]>("https://meta.fabricmc.net/v2/versions/game"),
     getJson<any[]>("https://meta.fabricmc.net/v2/versions/loader"),
     getJson<any>("https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json"),
     getJson<any>("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"),
+    getJson<any[]>("https://meta.quiltmc.org/v3/versions/loader"),
   ]);
 
   let releases: string[] = [];
@@ -105,14 +107,34 @@ export async function build(): Promise<Matrix> {
   }
 
   const rel = new Set(releases);
-  const loaders: Matrix["loaders"] = { Fabric: {}, Forge: {}, NeoForge: {}, Vanilla: {} };
+  const loaders: Matrix["loaders"] = { Fabric: {}, Forge: {}, NeoForge: {}, Quilt: {}, Vanilla: {} };
+  const loaderVersions: Matrix["loaderVersions"] = { Fabric: {}, Forge: {}, NeoForge: {}, Quilt: {}, Vanilla: {} };
 
   if (fab.status === "fulfilled" && fabLoaders.status === "fulfilled" && Array.isArray(fab.value)) {
+    const allLoaders = (fabLoaders.value || []).map((l: any) => l.version);
     const stableLoader = fabLoaders.value.find((l) => l.stable)?.version || fabLoaders.value[0]?.version || "0.20.1";
-    for (const g of fab.value) if (rel.has(g.version) && stableLoader) loaders.Fabric[g.version] = stableLoader;
+    for (const g of fab.value) {
+      if (rel.has(g.version)) {
+        loaders.Fabric[g.version] = stableLoader;
+        loaderVersions.Fabric[g.version] = allLoaders.slice(0, 10);
+      }
+    }
   }
   // Ensure Fabric has loader for 26.3 and key versions
   if (!loaders.Fabric["26.3"]) loaders.Fabric["26.3"] = "0.20.1";
+  if (!loaderVersions.Fabric["26.3"]) loaderVersions.Fabric["26.3"] = ["0.20.1", "0.16.10"];
+
+  if (quiltLoaders.status === "fulfilled" && Array.isArray(quiltLoaders.value)) {
+    const qVersions = quiltLoaders.value.map((l: any) => l.version);
+    const stableQuilt = qVersions[0] || "0.26.0";
+    for (const r of releases) {
+      const parts = r.split(".").map(Number);
+      if (parts[0] >= 25 || (parts[0] === 1 && parts[1] >= 14)) {
+        loaders.Quilt[r] = stableQuilt;
+        loaderVersions.Quilt[r] = qVersions.slice(0, 10);
+      }
+    }
+  }
 
   if (forge.status === "fulfilled" && forge.value?.promos) {
     const promos: Record<string, string> = forge.value.promos || {};
@@ -120,9 +142,12 @@ export async function build(): Promise<Matrix> {
       const [mc, kind] = k.split("-");
       if (!rel.has(mc)) continue;
       if (kind === "recommended" || !loaders.Forge[mc]) loaders.Forge[mc] = v;
+      if (!loaderVersions.Forge[mc]) loaderVersions.Forge[mc] = [];
+      if (!loaderVersions.Forge[mc].includes(v)) loaderVersions.Forge[mc].push(v);
     }
   }
   if (!loaders.Forge["26.3"]) loaders.Forge["26.3"] = "66.1.0";
+  if (!loaderVersions.Forge["26.3"]) loaderVersions.Forge["26.3"] = ["66.1.0"];
 
   if (neo.status === "fulfilled" && Array.isArray(neo.value?.versions)) {
     const all: string[] = neo.value.versions || [];
@@ -132,11 +157,14 @@ export async function build(): Promise<Matrix> {
       const cur = loaders.NeoForge[mc];
       const beta = v.includes("beta");
       if (!cur || (!beta) || cur.includes("beta")) loaders.NeoForge[mc] = v;
+      if (!loaderVersions.NeoForge[mc]) loaderVersions.NeoForge[mc] = [];
+      if (loaderVersions.NeoForge[mc].length < 10) loaderVersions.NeoForge[mc].push(v);
     }
   }
   if (!loaders.NeoForge["26.3"]) loaders.NeoForge["26.3"] = "26.3.0.99";
+  if (!loaderVersions.NeoForge["26.3"]) loaderVersions.NeoForge["26.3"] = ["26.3.0.99"];
 
-  const result: Matrix = { releases, versionTypes, latest, loaders, fetchedAt: Date.now() };
+  const result: Matrix = { releases, versionTypes, latest, loaders, loaderVersions, fetchedAt: Date.now() };
   writeDiskCache(result);
   return result;
 }

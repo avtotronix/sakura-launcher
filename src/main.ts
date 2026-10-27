@@ -30,6 +30,14 @@ import { registerAccountsIPC } from "./accounts";
 import { registerLauncherIPC } from "./launcher";
 import { download } from "./net";
 import { startAutoUpdater, registerUpdaterIPC } from "./updater";
+import { registerDownloadIPC, downloadManager } from "./downloadManager";
+import { InstancesManager, registerInstancesIPC } from "./instances";
+import { ModpackInstaller, registerModpackInstallerIPC } from "./modpackInstaller";
+import { FriendsSystem, registerFriendsIPC } from "./friends";
+import { ServersCatalogManager, registerServersCatalogIPC } from "./serversCatalog";
+import { ContentManager, registerContentIPC } from "./contentManager";
+import { ModrinthProvider, registerModrinthIPC } from "./modrinthProvider";
+import { CurseForgeProvider, registerCurseForgeIPC } from "./curseforgeProvider";
 
 // Defer Discord RPC to background to avoid blocking launcher startup
 const clientId = '1326922240505184287';
@@ -103,6 +111,42 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   "instances:delete",
   "instances:get-mods",
   "instances:delete-mod",
+  "instances:rename",
+  "instances:duplicate",
+  "instances:get-components",
+  "instances:toggle-component",
+  "instances:delete-component",
+  "instances:export",
+  "downloads:list",
+  "downloads:cancel",
+  "downloads:retry",
+  "downloads:clear",
+  "downloads:enqueue",
+  "modpack:install-mrpack",
+  "friends:get-state",
+  "friends:update-profile",
+  "friends:send-request",
+  "friends:accept-request",
+  "friends:decline-request",
+  "friends:remove-friend",
+  "servers:query",
+  "servers:toggle-favorite",
+  "servers:get-favorites",
+  "content:get-structure",
+  "content:list-library",
+  "content:install-from-library",
+  "content:remove-from-instance",
+  "content:delete-from-library",
+  "content:is-installed",
+  "content:open-folder",
+  "modrinth:search",
+  "modrinth:get-project",
+  "modrinth:get-versions",
+  "modrinth:get-version",
+  "curseforge:search",
+  "curseforge:get-files",
+  "curseforge:get-download-url",
+  "curseforge:set-api-key",
   "updater:check",
   "updater:open-url",
   "versions:matrix",
@@ -399,123 +443,49 @@ function registerIPC(): void {
     void shell.openPath(target);
   });
 
+  const contentManager = new ContentManager(getGameDataDir);
+  const modrinthProvider = new ModrinthProvider();
+  const curseforgeProvider = new CurseForgeProvider();
+
   ipcMain.handle("pack:download-mod", async (_event, req: any) => {
     if (!req || typeof req !== "object") throw new Error("Bad args");
     const { packId, url, filename, folder } = req;
     if (!url || !filename) throw new Error("Missing parameters");
     const safeFile = path.basename(String(filename));
     const targetFolder = ["mods", "resourcepacks", "shaderpacks", "datapacks"].includes(folder) ? folder : "mods";
-    const destDir = packId
-      ? path.join(getGameDataDir(), "instances", path.basename(String(packId)), targetFolder)
-      : path.join(getGameDataDir(), targetFolder);
-    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-    const dest = path.join(destDir, safeFile);
-    await download(String(url), dest);
-    return { ok: true, path: dest };
-  });
 
-  ipcMain.handle("instances:list", () => {
-    const instDir = path.join(getGameDataDir(), "instances");
-    if (!fs.existsSync(instDir)) return [];
-    const entries = fs.readdirSync(instDir, { withFileTypes: true });
-    return entries.filter(e => e.isDirectory()).map(e => {
-      const p = path.join(instDir, e.name);
-      const metaFile = path.join(p, "instance.json");
-      let meta: any = {};
-      if (fs.existsSync(metaFile)) {
-        try { meta = JSON.parse(fs.readFileSync(metaFile, "utf8")); } catch {}
-      }
-      const stat = fs.statSync(p);
-      const modsDir = path.join(p, "mods");
-      let count = 0;
-      if (fs.existsSync(modsDir)) {
-        try { count = fs.readdirSync(modsDir).filter(f => f.endsWith(".jar")).length; } catch {}
-      }
-      return {
-        id: e.name,
-        name: meta.name || e.name,
-        desc: meta.desc || "Локальная папка сборки",
-        v: meta.v || "1.21.1",
-        l: meta.l || "Fabric",
-        mods: meta.mods || Array(count).fill({ t: "Локальный мод", id: "" }),
-        createdAt: meta.createdAt || stat.birthtimeMs || stat.mtimeMs,
-      };
-    });
-  });
+    // 1. Always save master copy into Library
+    const libCategory = (targetFolder === "datapacks" ? "addons" : targetFolder) as any;
+    const libDir = contentManager.getLibraryDir(libCategory);
+    const masterPath = path.join(libDir, safeFile);
+    await download(String(url), masterPath);
 
-  ipcMain.handle("instances:create", (_event, req: any) => {
-    if (!req || typeof req !== "object") return false;
-    const { id, name, desc, v, l } = req;
-    if (!id || typeof id !== "string") return false;
-    const safePack = path.basename(id);
-    const instDir = path.join(getGameDataDir(), "instances", safePack);
-    const modsDir = path.join(instDir, "mods");
-    if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
-    const metaFile = path.join(instDir, "instance.json");
-    const meta = {
-      id: safePack,
-      name: String(name || safePack),
-      desc: String(desc || ""),
-      v: String(v || "1.21.1"),
-      l: String(l || "Fabric"),
-      createdAt: Date.now()
-    };
-    fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2), "utf8");
-    return true;
-  });
-
-  ipcMain.handle("instances:delete", (_event, packId: unknown) => {
-    if (!packId || typeof packId !== "string") return false;
-    const safePack = path.basename(packId);
-    const target = path.join(getGameDataDir(), "instances", safePack);
-    if (fs.existsSync(target)) {
-      try {
-        fs.rmSync(target, { recursive: true, force: true });
-        return true;
-      } catch (err) {
-        console.warn("Failed to delete instance:", err);
-      }
+    // 2. If target instance specified and not _library, copy into instance
+    let finalPath = masterPath;
+    if (packId && packId !== "_library") {
+      const instDir = path.join(getGameDataDir(), "instances", path.basename(String(packId)), targetFolder);
+      if (!fs.existsSync(instDir)) fs.mkdirSync(instDir, { recursive: true });
+      const instPath = path.join(instDir, safeFile);
+      fs.copyFileSync(masterPath, instPath);
+      finalPath = instPath;
     }
-    return false;
+
+    return { ok: true, path: finalPath };
   });
 
-  ipcMain.handle("instances:get-mods", (_event, packId: unknown) => {
-    if (!packId || typeof packId !== "string") return [];
-    const safePack = path.basename(packId);
-    const modsDir = path.join(getGameDataDir(), "instances", safePack, "mods");
-    if (!fs.existsSync(modsDir)) return [];
-    try {
-      const files = fs.readdirSync(modsDir);
-      return files.filter(f => f.endsWith(".jar")).map(f => {
-        const stat = fs.statSync(path.join(modsDir, f));
-        const cleanName = f.replace(/\.jar$/i, "").replace(/[-_][0-9vV].*$/, "");
-        return {
-          filename: f,
-          name: cleanName || f,
-          size: stat.size,
-          mtime: stat.mtimeMs,
-        };
-      });
-    } catch {
-      return [];
-    }
-  });
+  const instancesManager = new InstancesManager(getGameDataDir);
+  const modpackInstaller = new ModpackInstaller(instancesManager);
+  const friendsSystem = new FriendsSystem(getGameDataDir);
+  const serversCatalogManager = new ServersCatalogManager(getGameDataDir);
 
-  ipcMain.handle("instances:delete-mod", (_event, req: any) => {
-    if (!req || typeof req !== "object") return false;
-    const { packId, filename } = req;
-    if (!packId || !filename) return false;
-    const safePack = path.basename(String(packId));
-    const safeFile = path.basename(String(filename));
-    const file = path.join(getGameDataDir(), "instances", safePack, "mods", safeFile);
-    if (fs.existsSync(file)) {
-      try {
-        fs.unlinkSync(file);
-        return true;
-      } catch {}
-    }
-    return false;
-  });
+  registerDownloadIPC();
+  registerInstancesIPC(() => instancesManager);
+  registerModpackInstallerIPC(modpackInstaller);
+  registerFriendsIPC(() => friendsSystem);
+  registerServersCatalogIPC(() => serversCatalogManager, getGameDataDir);
+  registerContentIPC(() => contentManager);
+  registerModrinthIPC(() => modrinthProvider);
+  registerCurseForgeIPC(() => curseforgeProvider);
 
   ipcMain.handle("theme:get", () => ({
     shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
@@ -546,7 +516,7 @@ function registerIPC(): void {
   );
   
   registerAccountsIPC();
-  registerLauncherIPC(getGameDataDir);
+  registerLauncherIPC(getGameDataDir, () => friendsSystem);
   registerUpdaterIPC(() => mainWindow);
 }
 

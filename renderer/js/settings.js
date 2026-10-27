@@ -17,6 +17,27 @@ if($('#showAlpha')) $('#showAlpha').onchange=e=>{ST.showAlpha=e.target.checked;s
 $('#ram').oninput=e=>{ST.ram=+e.target.value;$('#rv').textContent=ST.ram+' ГБ';save()};
 $('#java').onchange=e=>{ST.java=e.target.selectedIndex;save()};
 $('#dir').onchange=e=>{ST.dir=e.target.value;save()};
+window.browseDataDir = async function() {
+  if (window.sakura && window.sakura.showOpenFile) {
+    try {
+      const selected = await window.sakura.showOpenFile({
+        title: 'Выберите папку для данных лаунчера (LauncherData)'
+      });
+      if (selected) {
+        const folder = selected.replace(/[\\/][^\\/]+$/, '');
+        ST.dir = folder;
+        if (document.getElementById('dir')) document.getElementById('dir').value = folder;
+        save();
+        if (window.sakura.contentGetStructure) {
+          await window.sakura.contentGetStructure();
+        }
+        toast('Папка данных лаунчера успешно обновлена и проверена!');
+      }
+    } catch {
+      toast('Не удалось изменить папку');
+    }
+  }
+};
 $('#cl').onchange=e=>{ST.cl=e.target.checked;save()};
 $('#wd').oninput=e=>{S.wind=ST.wind=+e.target.value;save()};
 $('#pt').onchange=e=>{S.petals=ST.petals=e.target.checked;save()};
@@ -338,6 +359,10 @@ window.renderPackSel = function() {
   
   sel.onchange = (e) => {
     if (ST) { ST.lastPack = sel.value; save(); }
+    const mtarget = document.getElementById("mtarget");
+    if (mtarget && sel.value) {
+      if ([...mtarget.options].some(o => o.value === sel.value)) mtarget.value = sel.value;
+    }
     const isPack = !!sel.value;
     const vLab = document.querySelector('label[for="ver"]');
     const vSel = document.getElementById('ver');

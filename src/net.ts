@@ -10,6 +10,8 @@ const ALLOWED_HOSTS = [
   "launchermeta.mojang.com",
   "meta.fabricmc.net",
   "maven.fabricmc.net",
+  "meta.quiltmc.org",
+  "maven.quiltmc.org",
   "files.minecraftforge.net",
   "maven.minecraftforge.net",
   "maven.neoforged.net",

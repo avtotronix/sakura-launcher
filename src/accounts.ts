@@ -14,8 +14,8 @@ import { Auth } from "msmc";
 import { getJson } from "./net";
 
 /** Put your Google OAuth "Desktop app" client id here (or env SAKURA_GOOGLE_CLIENT_ID). */
-const GOOGLE_CLIENT_ID = process.env.SAKURA_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
-const GOOGLE_CLIENT_SECRET = process.env.SAKURA_GOOGLE_CLIENT_SECRET || "YOUR_GOOGLE_CLIENT_SECRET";
+const GOOGLE_CLIENT_ID = process.env.SAKURA_GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.SAKURA_GOOGLE_CLIENT_SECRET || "";
 
 const ELY = "https://authserver.ely.by";
 
@@ -118,8 +118,25 @@ export interface LaunchAuth {
 
 export async function getLaunchAuth(elyAuth = false): Promise<LaunchAuth> {
   const s = load();
-  const acc = s.list.find((a) => a.id === s.active);
-  if (!acc) throw new Error("Выберите аккаунт");
+  let acc = s.list.find((a) => a.id === s.active);
+  if (!acc && s.list.length > 0) {
+    acc = s.list[0];
+    s.active = acc.id;
+    persist(s);
+  }
+  if (!acc) {
+    const defaultName = "Player";
+    const defaultAcc: StoredAcc = {
+      id: newId(),
+      type: "offline",
+      name: defaultName,
+      uuid: offlineUuid(defaultName),
+    };
+    s.list.push(defaultAcc);
+    s.active = defaultAcc.id;
+    persist(s);
+    acc = defaultAcc;
+  }
 
   if (acc.type === "offline") {
     return {

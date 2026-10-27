@@ -118,14 +118,26 @@ function frame(now){
 
 /* ---- navigation ---- */
 const nav=id=>$(`.n[data-p="${id}"]`).click();
-$$('.n').forEach(b=>b.onclick=()=>{
-  $$('.n').forEach(x=>x.removeAttribute('aria-current'));b.setAttribute('aria-current','page');
-  $$('section').forEach(s=>s.hidden=s.id!==b.dataset.p);
-  if(b.dataset.p==='skins')render();
-  if(b.dataset.p==='mods'&&!mloaded){mloaded=true;msearch()}
-  if(b.dataset.p==='servers'&&window.initServers){window.initServers()}
-  $('.panel').classList.toggle('wide',b.dataset.p==='skins');
-  $('.panel').classList.toggle('xl',b.dataset.p==='mods'||b.dataset.p==='servers');
+$$('.n').forEach(b => b.onclick = () => {
+  $$('.n').forEach(x => x.removeAttribute('aria-current'));
+  b.setAttribute('aria-current', 'page');
+  const p = b.dataset.p;
+  const isModSub = ['mods', 'resourcepacks', 'shaders', 'addons', 'instances', 'modpacks'].includes(p);
+  const targetSectionId = isModSub ? 'mods' : p;
+
+  $$('section').forEach(s => s.hidden = s.id !== targetSectionId);
+
+  if (p === 'skins' && typeof render === 'function') render();
+  if (p === 'servers' && window.initServers) window.initServers();
+  if (p === 'friends' && window.initFriends) window.initFriends();
+  if (p === 'downloads' && window.initDownloads) window.initDownloads();
+
+  if (isModSub && window.switchToModType) {
+    window.switchToModType(p);
+  }
+
+  $('.panel').classList.toggle('wide', p === 'skins');
+  $('.panel').classList.toggle('xl', isModSub || p === 'servers' || p === 'downloads' || p === 'friends' || p === 'logs');
 });
 //
 

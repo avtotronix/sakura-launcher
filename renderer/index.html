@@ -20,8 +20,11 @@
 <button class="n" data-p="play" aria-current="page">Играть</button>
 <button class="n" data-p="mods">Моды</button>
 <button class="n" data-p="servers">Серверы</button>
+<button class="n" data-p="friends">Друзья</button>
+<button class="n" data-p="downloads">Загрузки</button>
 <button class="n" data-p="skins">Скины</button>
 <button class="n" data-p="set">Настройки</button>
+<button class="n" data-p="logs">Логи</button>
 
 <div class="user-card-rail" id="rail_user" onclick="if(document.getElementById('play_acc_btn'))document.getElementById('play_acc_btn').click()">
   <div class="rail-avatar" id="rail_avatar">G</div>
@@ -58,6 +61,7 @@
   <button class="mtype-pill" data-type="resourcepack">Resource Packs</button>
   <button class="mtype-pill" data-type="shader">Shaders</button>
   <button class="mtype-pill" data-type="datapack">Addons</button>
+  <button class="mtype-pill" data-type="modpack">Modpacks</button>
 </div>
 <div class="mtop-bar">
   <div class="mtop-left">
@@ -66,18 +70,32 @@
       <button class="mtab-pill" data-t="mod" aria-selected="false">Browse</button>
       <button class="mtab-pill" data-t="mine" aria-selected="false">Modpacks</button>
     </div>
-    <button class="mact-btn" id="mact_disable">Disable mod loader</button>
+    <button class="mact-btn" id="mact_disable">Disable mods</button>
     <button class="mact-btn" id="mact_check">Check Updates</button>
     <button class="mact-btn" id="mact_copy">Copy from Instance</button>
-    <button class="mact-btn" id="mact_folder">Open mods folder</button>
+    <button class="mact-btn" id="mact_folder">Open folder</button>
   </div>
-  <div class="mtop-right">
-<div class="seg" id="msrc" role="group" aria-label="Источник"></div>
-<div class="seg" id="mld" role="group" aria-label="Загрузчик"></div>
-<select id="mv" aria-label="Версия игры"></select>
-    <div class="msearch-input-wrap">
+  <div class="mtop-right" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <div class="seg" id="msrc" role="group" aria-label="Источник" style="margin:0"></div>
+    <select id="mtarget" aria-label="Целевая сборка" style="width:160px;padding:7px 10px;font-size:12px">
+      <option value="_library">В библиотеку (Library)</option>
+    </select>
+    <select id="mld_sel" aria-label="Загрузчик" style="width:105px;padding:7px 10px;font-size:12px">
+      <option value="Fabric">Fabric</option>
+      <option value="Forge">Forge</option>
+      <option value="NeoForge">NeoForge</option>
+      <option value="Quilt">Quilt</option>
+      <option value="Vanilla">Vanilla</option>
+    </select>
+    <select id="mv" aria-label="Версия игры" style="width:95px;padding:7px 10px;font-size:12px"></select>
+    <select id="msort" aria-label="Сортировка" style="width:135px;padding:7px 10px;font-size:12px">
+      <option value="downloads">По популярности</option>
+      <option value="updated">По обновлению</option>
+      <option value="relevance">По релевантности</option>
+    </select>
+    <div class="msearch-input-wrap" style="width:170px">
       <svg class="msearch-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input type="text" id="mq" placeholder="Search installed..." autocomplete="off">
+      <input type="text" id="mq" placeholder="Поиск..." autocomplete="off">
     </div>
   </div>
 </div>
@@ -178,8 +196,11 @@
 <input type="range" id="ram" min="2" max="16" value="4">
 <label for="java">Java</label>
 <select id="java"><option>Подобрать автоматически</option><option>Java 21</option><option>Java 17</option><option>Java 8</option></select>
-<label for="dir">Папка игры</label>
-<input type="text" id="dir" value="%APPDATA%\.sakura">
+<label for="dir">Папка игры (LauncherData)</label>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+  <input type="text" id="dir" value="%APPDATA%\.sakura">
+  <button class="btn" id="dir_browse_btn" style="white-space:nowrap" onclick="window.browseDataDir()">Обзор...</button>
+</div>
 <label class="chk"><input type="checkbox" id="cl"> Закрывать лаунчер после запуска игры</label>
 <label class="chk" style="margin-top:8px"><input type="checkbox" id="elyAuth"> Авторизация Ely.by на серверах (authlib-injector)</label>
 <small class="sub" style="display:block;margin:2px 0 10px 24px;font-size:12px;color:var(--mute)">Выключено: подключение к FunTime и другим серверам без ошибки лицензии. Включайте, только если сервер требует Ely.by.</small>
@@ -218,6 +239,94 @@
 <div class="row"><div><b id="app_ver_txt">Sakura Launcher</b><small id="app_upd_sub">Проверка обновлений каждые 15 минут</small></div><button class="btn" id="check_upd_btn">Проверить обновления</button></div>
 </section>
 
+<section id="friends" hidden>
+  <div class="srv-header">
+    <div class="srv-header-left">
+      <h1 style="margin:0">Друзья и мультиплеер</h1>
+      <p class="sub" style="margin:4px 0 0">Статус друзей, прямое подключение и поиск LAN-миров</p>
+    </div>
+    <div class="srv-header-right">
+      <button class="btn on" onclick="window.openAddFriendDialog()">+ Добавить друга</button>
+    </div>
+  </div>
+
+  <div class="friends-profile-card" id="friends_my_card">
+    <div class="friends-avatar" id="friends_my_avatar">G</div>
+    <div class="friends-info">
+      <div style="display:flex;align-items:center;gap:10px">
+        <b style="font-size:16px" id="friends_my_name">Мой профиль</b>
+        <span class="friends-status-badge online" id="friends_my_badge">В сети</span>
+      </div>
+      <p class="sub" style="margin:2px 0 0" id="friends_my_status_text">В лаунчере</p>
+      <small style="color:var(--mute)" id="friends_my_id">ID: —</small>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <label style="margin:0;font-size:13px;color:var(--mute)">Статус:</label>
+      <select id="friends_status_sel" style="width:140px;padding:6px 10px" onchange="window.setMyPresenceStatus(this.value)">
+        <option value="online">В сети</option>
+        <option value="dnd">Не беспокоить</option>
+        <option value="hidden">Невидимка</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="friends_requests_wrap" hidden style="margin-top:16px">
+    <h3 style="margin:0 0 10px">Запросы в друзья</h3>
+    <div id="friends_requests_list" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+
+  <div style="margin-top:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h3 style="margin:0" id="friends_list_title">Список друзей (0)</h3>
+    </div>
+    <div class="friends-grid" id="friends_list">
+      <p class="sub">У вас пока нет друзей в списке. Добавьте друзей по никнейму или коду приглашения!</p>
+    </div>
+  </div>
+</section>
+
+<dialog id="friend_add_dialog" aria-labelledby="fr_add_t" onclick="if(event.target===this)this.close()">
+  <h2 id="fr_add_t" style="margin-top:0">Добавить друга</h2>
+  <label for="fr_add_input">Никнейм игрока или ID профиля</label>
+  <input type="text" id="fr_add_input" maxlength="48" placeholder="например: Alex или f_123" autocomplete="off" onkeydown="if(event.key==='Enter')window.submitFriendRequest()">
+  <p class="sub" id="fr_add_err" style="margin:6px 0 0;color:#ff5555" hidden></p>
+  <div class="acts2" style="margin-top:16px">
+    <button class="btn" onclick="document.getElementById('friend_add_dialog').close()">Отмена</button>
+    <button class="btn on" onclick="window.submitFriendRequest()">Отправить запрос</button>
+  </div>
+</dialog>
+
+<section id="downloads" hidden>
+  <div class="srv-header">
+    <div class="srv-header-left">
+      <h1 style="margin:0">Менеджер загрузок</h1>
+      <p class="sub" style="margin:4px 0 0" id="dl_summary_text">Активные и завершённые загрузки</p>
+    </div>
+    <div class="srv-header-right" style="gap:8px">
+      <button class="btn" onclick="window.clearFinishedDownloads()">Очистить завершённые</button>
+      <button class="btn" onclick="if(window.sakura)window.sakura.openGameFolder()">Папка игры</button>
+    </div>
+  </div>
+
+  <div id="dl_list" style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+    <p class="sub" id="dl_empty_text">Загрузок пока нет. Скачивайте моды, ресурс-паки, шейдеры и сборки из каталога!</p>
+  </div>
+</section>
+
+<section id="logs" hidden>
+  <div class="srv-header">
+    <div class="srv-header-left">
+      <h1 style="margin:0">Логи лаунчера и игры</h1>
+      <p class="sub" style="margin:4px 0 0">Вывод консоли Minecraft и процессов установки в реальном времени</p>
+    </div>
+    <div class="srv-header-right" style="gap:8px">
+      <button class="btn" onclick="window.clearGameLogs()">Очистить</button>
+      <button class="btn" onclick="window.copyGameLogs()">Копировать всё</button>
+      <button class="btn" onclick="if(window.sakura)window.sakura.openGameFolder('logs')">Папка логов</button>
+    </div>
+  </div>
+  <div id="game_log_box" style="margin-top:16px;background:#141318;border:1px solid var(--line);border-radius:12px;padding:14px;font-family:Consolas,monospace;font-size:12px;line-height:1.45;color:#e2e2e8;height:520px;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></div>
+</section>
 
   <section id="pack_view" class="pack_view_style" hidden>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-shrink:0;">
@@ -300,6 +409,20 @@
 <p class="sub" id="pne" role="alert" style="margin:8px 0 0"></p>
 <div class="acts2"><button class="btn" id="pnc">Отмена</button><button class="btn on" id="pnok">Создать</button></div>
 </dialog>
+
+<dialog id="copy_instance_dlg" aria-labelledby="copy_t" onclick="if(event.target===this)this.close()">
+  <h2 id="copy_t" style="margin-top:0">Скопировать компоненты из сборки</h2>
+  <label for="copy_src_instance">Сборка-источник:</label>
+  <select id="copy_src_instance"></select>
+  <label for="copy_dest_instance">Целевая сборка:</label>
+  <select id="copy_dest_instance"></select>
+  <label class="chk" style="margin-top:12px"><input type="checkbox" id="copy_include_configs" checked> Также скопировать конфигурации (config/)</label>
+  <div class="acts2" style="margin-top:16px">
+    <button class="btn" onclick="document.getElementById('copy_instance_dlg').close()">Отмена</button>
+    <button class="btn on" onclick="window.doCopyFromInstance()">Скопировать</button>
+  </div>
+</dialog>
+
 <input type="file" id="pimp" accept=".json,application/json" hidden>
 <div class="t" id="t" role="status"></div>
 
@@ -348,6 +471,8 @@
 
 <script src="js/folders.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/friends.js"></script>
+<script src="js/downloads.js"></script>
 
 </body>
 </html>

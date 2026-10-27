@@ -48,6 +48,7 @@ window.fetchVersions = async function() {
         if (matrix.loaders?.Fabric && matrix.loaders.Fabric[v]) items.push({ text: `${v} (Fabric)`, val: `${v}|Fabric` });
         if (matrix.loaders?.Forge && matrix.loaders.Forge[v]) items.push({ text: `${v} (Forge)`, val: `${v}|Forge` });
         if (matrix.loaders?.NeoForge && matrix.loaders.NeoForge[v]) items.push({ text: `${v} (NeoForge)`, val: `${v}|NeoForge` });
+        if (matrix.loaders?.Quilt && matrix.loaders.Quilt[v]) items.push({ text: `${v} (Quilt)`, val: `${v}|Quilt` });
       });
     }
     
@@ -57,6 +58,7 @@ window.fetchVersions = async function() {
         items.push({ text: `${v} (Fabric)`, val: `${v}|Fabric` });
         items.push({ text: `${v} (Forge)`, val: `${v}|Forge` });
         items.push({ text: `${v} (NeoForge)`, val: `${v}|NeoForge` });
+        items.push({ text: `${v} (Quilt)`, val: `${v}|Quilt` });
       });
     }
     
@@ -123,7 +125,10 @@ window.doLaunchGame = async function(e) {
       loader: l,
       ram: ST.ram || 4,
       packId: packId,
-      elyAuth: !!ST.elyAuth
+      elyAuth: !!ST.elyAuth,
+      skinData: ST.skinData || '',
+      skinSlim: !!ST.skinSlim,
+      nick: (active && active.name) || ST.nick || 'Player'
     });
     
     busy = false;
@@ -145,6 +150,19 @@ window.doLaunchGame = async function(e) {
 const goBtn = $('#go');
 if (goBtn) goBtn.onclick = window.doLaunchGame;
 
+window.clearGameLogs = function() {
+  const box = document.getElementById('game_log_box');
+  if (box) box.textContent = '';
+  toast('Логи очищены');
+};
+
+window.copyGameLogs = function() {
+  const box = document.getElementById('game_log_box');
+  if (box) {
+    navigator.clipboard.writeText(box.textContent || '').then(() => toast('Логи скопированы в буфер обмена!'));
+  }
+};
+
 if (window.sakura && window.sakura.onLauncherEvent) {
   window.sakura.onLauncherEvent('progress', (data) => {
     if (!data) return;
@@ -155,6 +173,19 @@ if (window.sakura && window.sakura.onLauncherEvent) {
   });
   window.sakura.onLauncherEvent('log', (msg) => {
     console.log('[MCLC]', msg);
+    const box = document.getElementById('game_log_box');
+    if (box) {
+      const line = document.createElement('div');
+      const text = String(msg);
+      line.textContent = text;
+      if (text.includes('[ERROR]') || text.includes('Exception') || text.includes('Error')) {
+        line.style.color = '#ff6b6b';
+      } else if (text.includes('[WARN]')) {
+        line.style.color = '#ffd166';
+      }
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
   });
 }
 

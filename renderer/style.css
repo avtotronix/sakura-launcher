@@ -9,11 +9,11 @@ html,body{height:100%}
 body{margin:0;font:15px/1.55 Manrope,system-ui,sans-serif;color:var(--ink);background:linear-gradient(170deg,var(--bg1),var(--bg2));background-color:var(--bg1);overflow:hidden}
 canvas#c,canvas#g{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 .app{position:relative;z-index:2;display:flex;height:100%;gap:clamp(12px,2vw,28px);padding:clamp(12px,2.4vw,32px)}
-.rail{width:150px;display:flex;flex-direction:column;gap:4px;padding:14px 10px;flex:none;align-self:flex-start;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:22px}
+.rail{width:160px;display:flex;flex-direction:column;gap:3px;padding:12px 8px;flex:none;align-self:stretch;max-height:100%;overflow-y:auto;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:22px}
 .logo{display:flex;align-items:center;gap:10px;margin:0 0 14px 6px}
 .logo span{font:500 36px/1 'Shippori Mincho',serif;color:var(--acc)}
 .logo b{font:italic 300 23px Spectral,serif}
-.n{position:relative;text-align:left;background:none;border:0;color:var(--mute);padding:9px 12px 9px 20px;border-radius:12px;font:600 15px Manrope,sans-serif;cursor:pointer}
+.n{position:relative;text-align:left;background:none;border:0;color:var(--mute);padding:7px 10px 7px 18px;border-radius:10px;font:600 13px Manrope,sans-serif;cursor:pointer}
 .n:hover{color:var(--ink)}
 .n[aria-current=page]{color:var(--ink);background:var(--field)}
 .n[aria-current=page]::before{content:"";position:absolute;left:7px;top:50%;width:7px;height:11px;margin-top:-6px;background:var(--acc);border-radius:100% 0 100% 0;transform:rotate(-20deg)}
@@ -158,7 +158,36 @@ textarea{width:100%;min-height:84px;resize:vertical;padding:11px 13px;border-rad
 .pk .mi p{-webkit-line-clamp:3}
 .pk .mi b{white-space:normal}
 .pk .mi small{color:var(--mute);display:block;margin-top:2px}
-.mc2.pk { grid-template-columns: minmax(0, 1fr) auto !important; }
+.mc2.pk {
+  display: grid !important;
+  grid-template-columns: 56px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  gap: 12px 14px !important;
+  align-items: start !important;
+  padding: 14px !important;
+}
+.mc2.pk .ico {
+  grid-row: 1;
+  grid-column: 1;
+  width: 56px !important;
+  height: 56px !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  align-self: start !important;
+}
+.mc2.pk .mi {
+  grid-row: 1;
+  grid-column: 2;
+  min-width: 0 !important;
+}
+.mc2.pk .mod-actions-wrap, .mc2.pk .mb {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
 .mbody.one{grid-template-columns:1fr}
 .mbody.one .mgrid{max-width:920px}
 .pk .mx{display:block}
@@ -569,4 +598,131 @@ select option {
   z-index: -2;
   pointer-events: none;
   transition: opacity 0.3s ease;
+}
+
+/* Friends Tab Styles */
+.friends-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 14px;
+}
+.friends-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #b8456a, #e6739f);
+  color: #fff;
+  font-weight: 700;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.friends-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.friends-status-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.friends-status-badge.online { background: rgba(67, 181, 129, 0.15); color: #43b581; }
+.friends-status-badge.online::before { background: #43b581; }
+.friends-status-badge.server { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+.friends-status-badge.server::before { background: #a855f7; }
+.friends-status-badge.lan_host { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.friends-status-badge.lan_host::before { background: #3b82f6; }
+.friends-status-badge.singleplayer { background: rgba(6, 182, 212, 0.15); color: #06b6d4; }
+.friends-status-badge.singleplayer::before { background: #06b6d4; }
+.friends-status-badge.dnd { background: rgba(240, 71, 71, 0.15); color: #f04747; }
+.friends-status-badge.dnd::before { background: #f04747; }
+.friends-status-badge.offline { background: rgba(116, 127, 141, 0.15); color: #747f8d; }
+.friends-status-badge.offline::before { background: #747f8d; }
+
+.friends-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.friend-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+.friend-card .friend-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* Download Manager Styles */
+.dl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.dl-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dl-card-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dl-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 8px;
+  text-transform: uppercase;
+}
+.dl-badge.mod { background: rgba(30, 215, 96, 0.15); color: #1ed760; }
+.dl-badge.resourcepack { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.dl-badge.shaderpack { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+.dl-badge.datapack { background: rgba(234, 179, 8, 0.15); color: #eab308; }
+.dl-badge.modpack { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
+
+.dl-bar-track {
+  height: 6px;
+  border-radius: 6px;
+  background: var(--line);
+  overflow: hidden;
+  position: relative;
+}
+.dl-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f4a6bb, var(--acc));
+  transition: width 0.15s ease;
+}
+.dl-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--mute);
 }
