@@ -7,16 +7,16 @@
   **Быстрый, стильный и современный лаунчер для Minecraft на базе Electron и TypeScript.**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-pink.svg?style=for-the-badge)](LICENSE)
-  [![Release](https://img.shields.io/badge/Release-v0.1.2-00ff66?style=for-the-badge&logo=github)](https://github.com/avtotronix/sakura-launcher/releases/latest)
+  [![Release](https://img.shields.io/badge/Release-v0.1.3-00ff66?style=for-the-badge&logo=github)](https://github.com/avtotronix/sakura-launcher/releases/latest)
   [![Platform](https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge&logo=windows)](https://github.com/avtotronix/sakura-launcher/releases/latest)
 
   <br/>
 
   ### 📥 Скачать для Windows:
   
-  [<img src="https://img.shields.io/badge/Скачать-Установщик_(EXE)-2ea44f?style=for-the-badge&logo=windows&logoColor=white" height="38"/>](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.2/Sakura-Launcher-Installer.exe)
+  [<img src="https://img.shields.io/badge/Скачать-Установщик_(EXE)-2ea44f?style=for-the-badge&logo=windows&logoColor=white" height="38"/>](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.3/Sakura-Launcher-Installer.exe)
   &nbsp;&nbsp;
-  [<img src="https://img.shields.io/badge/Скачать-Portable_Версию-555555?style=for-the-badge&logo=files&logoColor=white" height="38"/>](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.2/Sakura-Launcher-Portable.exe)
+  [<img src="https://img.shields.io/badge/Скачать-Portable_Версию-555555?style=for-the-badge&logo=files&logoColor=white" height="38"/>](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.3/Sakura-Launcher-Portable.exe)
 
 </div>
 
@@ -26,21 +26,23 @@
 
 | Версия | Тип | Размер | Описание | Ссылка |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1.2** | **Installer (Setup)** | ~86 MB | Полный установщик с ярлыками и каталогами | **[Скачать Installer](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.2/Sakura-Launcher-Installer.exe)** |
-| **v0.1.2** | **Portable** | ~85 MB | Запуск без установки (скачал и сразу играй) | **[Скачать Portable](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.2/Sakura-Launcher-Portable.exe)** |
+| **v0.1.3** | **Installer (Setup)** | ~82 MB | Полный установщик с ярлыками и каталогами | **[Скачать Installer](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.3/Sakura-Launcher-Installer.exe)** |
+| **v0.1.3** | **Portable** | ~82 MB | Запуск без установки (скачал и сразу играй) | **[Скачать Portable](https://github.com/avtotronix/sakura-launcher/releases/download/v0.1.3/Sakura-Launcher-Portable.exe)** |
 
 ---
 
 ## ✨ Основные особенности
 
 - 🌸 **Эстетичный интерфейс**: Чистый, интуитивный дизайн в стиле Sakura с плавными анимациями.
-- 📦 **Каталог в 1 клик**: Моды, ресурспаки и шейдеры напрямую из Modrinth и CurseForge.
+- 📦 **Единый каталог в 1 клик**: Моды, ресурспаки, шейдеры, дополнения и модпаки напрямую из Modrinth и CurseForge с авто-фильтрами.
+- 🎨 **Система скинов**: Автоматическая установка и отображение скинов игрока в одиночных мирах и сетевой игре.
+- 👥 **Друзья онлайн**: Добавление друзей по никнейму и отображение статуса игры в реальном времени.
 - 🔑 **Мульти-аккаунты**:
   - **Microsoft** (через официальный OAuth/msmc)
   - **Ely.by** (Yggdrasil auth)
   - **Offline** (локальный режим)
 - 🎮 **Discord Rich Presence (RPC)**: Показывает текущий статус и версию игры прямо в профиле Discord.
-- 🔒 **Безопасность**: Учетные данные шифруются на уровне ОС с использованием Electron `safeStorage` (DPAPI).
+- 🔒 **Безопасность**: Учетные данные шифруются на уровне ОС с использованием Electron `safeStorage` (DPAPI), полная совместимость с Windows Smart App Control.
 - ⚡ **Высокая производительность**: Мгновенный запуск за 1-2 секунды через `minecraft-launcher-core`.
 - 🛠 **Автоисправление сбоев**: Умный перехват и исправление крашей при запуске игры.
 
