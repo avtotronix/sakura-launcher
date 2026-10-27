@@ -80,6 +80,7 @@
     <select id="mtarget" aria-label="Целевая сборка" style="width:160px;padding:7px 10px;font-size:12px">
       <option value="_library">В библиотеку (Library)</option>
     </select>
+    <button type="button" class="btn on" id="btn_new_instance_top" style="padding:6px 12px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer" title="Создать новую сборку">+ Создать сборку</button>
     <select id="mld_sel" aria-label="Загрузчик" style="width:105px;padding:7px 10px;font-size:12px">
       <option value="Fabric">Fabric</option>
       <option value="Forge">Forge</option>
@@ -395,11 +396,34 @@
     </div>
   </dialog>
   
-<dialog id="pkd" aria-labelledby="pkt">
-<h2 id="pkt" style="margin-top:0">Добавить в сборку</h2>
-<p class="sub" id="pkm" style="margin:0"></p>
-<label for="pks">Сборка</label><select id="pks"></select>
-<div class="acts2"><button class="btn" id="pkc">Отмена</button><button class="btn on" id="pko">Добавить</button></div>
+<dialog id="pkd" aria-labelledby="pkt" style="width:min(480px,94vw);border-radius:22px;background:#1a191f;border:1px solid rgba(255,117,181,0.25);box-shadow:0 12px 40px rgba(0,0,0,0.6)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <h2 id="pkt" style="margin:0;font-size:20px;font-weight:700;color:#fff">Установка в сборку</h2>
+    <span class="badge" id="pkd_badge" style="background:var(--acc);color:#fff;font-size:11px;padding:4px 10px;border-radius:12px">Мод</span>
+  </div>
+  <p class="sub" id="pkm" style="margin:0 0 16px;color:var(--mute);font-size:13px"></p>
+  
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div>
+      <label for="pks" style="display:block;margin-bottom:6px;font-size:13px;font-weight:600;color:var(--ink)">Выберите сборку или библиотеку:</label>
+      <select id="pks" style="width:100%;padding:10px 14px;font-size:13px;border-radius:12px;background:var(--bg2);color:var(--ink);border:1px solid var(--line)"></select>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,117,181,0.06);padding:12px 14px;border-radius:14px;border:1px dashed rgba(255,117,181,0.3)">
+      <div style="font-size:12px;color:var(--ink)">
+        <b>Нужна новая сборка?</b><br/>
+        <span style="color:var(--mute);font-size:11px">Создайте чистую сборку под этот компонент</span>
+      </div>
+      <button type="button" class="btn on" id="pkd_new_instance_btn" style="padding:7px 14px;font-size:12px;font-weight:700;white-space:nowrap;background:var(--acc);color:#fff">
+        + Создать новую сборку
+      </button>
+    </div>
+  </div>
+
+  <div class="acts2" style="margin-top:24px;display:flex;gap:10px;justify-content:flex-end">
+    <button type="button" class="btn" id="pkc" style="padding:8px 18px">Отмена</button>
+    <button type="button" class="btn on" id="pko" style="padding:8px 22px;background:var(--acc);color:#fff;font-weight:700">Скачать и установить</button>
+  </div>
 </dialog>
 <dialog id="pkn" aria-labelledby="pnt">
 <h2 id="pnt" style="margin-top:0">Новая сборка</h2>

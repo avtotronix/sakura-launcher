@@ -1,17 +1,52 @@
 /* ---- mods.js: Unified Content Catalog, Modrinth, CurseForge, Library & Instances ---- */
 
-const CAT = {
-  o: 'Оптимизация',
-  u: 'Утилиты',
-  t: 'Технологии',
-  f: 'Еда',
-  m: 'Магия',
-  a: 'Приключения',
-  w: 'Миры',
-  b: 'Строительство',
-  l: 'Библиотеки'
+const MOD_CATEGORIES = {
+  mod: [
+    ['all', 'Все категории'],
+    ['optimization', 'Оптимизация'],
+    ['utility', 'Утилиты'],
+    ['technology', 'Технологии'],
+    ['food', 'Еда и фермы'],
+    ['magic', 'Магия'],
+    ['adventure', 'Приключения'],
+    ['worldgen', 'Генерация мира'],
+    ['decoration', 'Декор и стройка'],
+    ['library', 'Библиотеки (API)'],
+    ['storage', 'Хранилища'],
+    ['equipment', 'Снаряжение'],
+    ['gameplay', 'Геймплей']
+  ],
+  resourcepack: [
+    ['all', 'Все категории'],
+    ['realistic', 'Реалистичные'],
+    ['medieval', 'Средневековье'],
+    ['simplistic', 'Упрощенные'],
+    ['vanilla-like', 'Ванильные'],
+    ['mod-support', 'Поддержка модов']
+  ],
+  shader: [
+    ['all', 'Все категории'],
+    ['fancy', 'Красивые'],
+    ['potato', 'Для слабых ПК'],
+    ['realistic', 'Реалистичные'],
+    ['vanilla-like', 'Ванильные']
+  ],
+  datapack: [
+    ['all', 'Все категории'],
+    ['adventure', 'Приключения'],
+    ['gameplay', 'Геймплей'],
+    ['worldgen', 'Генерация'],
+    ['utility', 'Утилиты']
+  ],
+  modpack: [
+    ['all', 'Все категории'],
+    ['adventure', 'Приключения'],
+    ['magic', 'Магия'],
+    ['technology', 'Технологии'],
+    ['quests', 'Квесты'],
+    ['optimization', 'Оптимизация']
+  ]
 };
-const CATS = Object.entries(CAT);
 
 const LC = { F: 'Fabric', R: 'Forge', N: 'NeoForge', Q: 'Quilt' };
 const LK = { Fabric: 'fabric', Forge: 'forge', NeoForge: 'neoforge', Quilt: 'quilt', Vanilla: 'vanilla' };
@@ -89,13 +124,15 @@ function mchips() {
   // Categories sidebar
   const mcatsEl = document.getElementById('mcats');
   if (mcatsEl) {
-    mcatsEl.innerHTML = CATS.map(c =>
-      `<button class="chip" aria-pressed="${mcat.has(c[0])}" data-c="${c[0]}">${c[1]}</button>`
-    ).join('');
+    const list = MOD_CATEGORIES[mctype] || MOD_CATEGORIES.mod;
+    mcatsEl.innerHTML = list.map(([slug, title]) => {
+      const isPressed = slug === 'all' ? (mcat.size === 0) : mcat.has(slug);
+      return `<button class="chip ${isPressed ? 'active' : ''}" aria-pressed="${isPressed}" data-c="${slug}">${title}</button>`;
+    }).join('');
   }
   const mcwEl = document.getElementById('mcw');
   if (mcwEl) {
-    mcwEl.hidden = !(isBrowse && msrc === 'mr' && mctype === 'mod');
+    mcwEl.hidden = false;
   }
 
   // Top tab buttons (Installed / Browse / Modpacks)
@@ -114,7 +151,7 @@ function mchips() {
   if (msortSel) msortSel.hidden = !isBrowse;
 
   const mbody = document.querySelector('.mbody');
-  if (mbody) mbody.classList.toggle('one', !isBrowse || msrc !== 'mr' || mctype !== 'mod');
+  if (mbody) mbody.classList.remove('one');
 
   // Update folder button label
   const folderBtn = document.getElementById('mact_folder');
@@ -211,6 +248,14 @@ async function minst() {
 
   if (q) {
     items = items.filter(it => (it.name + ' ' + it.filename).toLowerCase().includes(q));
+  }
+
+  const validCats = Array.from(mcat).filter(c => c && c !== 'all');
+  if (validCats.length > 0) {
+    items = items.filter(it => {
+      const text = (it.name + ' ' + it.filename).toLowerCase();
+      return validCats.some(c => text.includes(c));
+    });
   }
 
   const targetLabel = target === '_library' ? 'библиотеке (Library)' : `сборке «${target}»`;
@@ -352,11 +397,17 @@ async function msearch(more = false) {
     let hits = [];
     let total = 0;
 
+    const validCats = Array.from(mcat).filter(c => c && c !== 'all');
+
     if (msrc === 'cf') {
       if (window.sakura && window.sakura.curseforgeSearch) {
+        let cfQuery = q;
+        if (validCats.length > 0 && !cfQuery) {
+          cfQuery = validCats.join(' ');
+        }
         const cfRes = await window.sakura.curseforgeSearch({
-          query: q,
-          contentType: mctype,
+          query: cfQuery,
+          contentType: (mctype === 'datapack' ? 'mod' : mctype),
           gameVersion: (mctype === 'mod' || mctype === 'modpack') ? v : undefined,
           loader: (mctype === 'mod' || mctype === 'modpack') ? mld : undefined,
           offset: moff,
@@ -382,7 +433,7 @@ async function msearch(more = false) {
           projectType: mctype,
           gameVersion: (mctype === 'mod' || mctype === 'modpack') ? v : undefined,
           loader: (mctype === 'mod' || mctype === 'modpack') ? mld : undefined,
-          categories: Array.from(mcat),
+          categories: validCats.length > 0 ? validCats : undefined,
           index: msort,
           offset: moff,
           limit: 20
@@ -438,13 +489,25 @@ async function dlOne(b) {
   const t = b.dataset.t;
   const src = b.dataset.src;
   const pt = b.dataset.pt || mctype || 'mod';
-  const target = window.getTargetInstanceId();
+
+  window.openDownloadChoiceDialog({
+    id,
+    t,
+    src,
+    pt,
+    button: b
+  });
+}
+
+// Perform the actual download to the chosen target instance (or Library)
+async function executeDownloadItem(item, target) {
+  const { id, t, src, pt, button: b } = item;
   const folder = getFolderForType(pt);
   const v = document.getElementById('mv') ? document.getElementById('mv').value : '1.21.1';
   const mldSel = document.getElementById('mld_sel');
   const l = mldSel ? mldSel.value : 'Fabric';
 
-  b.disabled = true;
+  if (b) b.disabled = true;
   toast(`Поиск файла для «${t}»...`);
 
   try {
@@ -480,18 +543,24 @@ async function dlOne(b) {
 
     if (!fileUrl || !fileName) throw new Error('none');
 
-    toast(`Скачиваем «${fileName}»...`);
+    const targetPack = (ST.packs || []).find(p => p.id === target);
+    const targetName = target === '_library' ? 'библиотеку (Library)' : `сборку «${targetPack ? targetPack.name : target}»`;
+
+    toast(`Скачиваем «${fileName}» в ${targetName}...`);
     const res = await window.sakura.downloadModToPack(target, fileUrl, fileName, folder);
     if (res && res.ok) {
-      toast(`«${t}» успешно установлен в ${target === '_library' ? 'библиотеку (Library)' : 'сборку ' + target}!`);
-      // Update button state
-      b.outerHTML = '<span class="badge" style="background:#22c55e;color:#fff;padding:6px 12px;border-radius:12px;font-size:12px">Установлено</span>';
+      toast(`«${t}» успешно установлен в ${targetName}!`);
+      if (b) {
+        b.outerHTML = '<span class="badge" style="background:#22c55e;color:#fff;padding:6px 12px;border-radius:12px;font-size:12px">Установлено</span>';
+      }
+      await window.syncDiskPacks();
+      window.updateTargetInstanceDropdown();
     } else {
       throw new Error('download failed');
     }
   } catch (err) {
     toast(err.message === 'none' ? `Для ${v} и ${l} у «${t}» нет подходящего файла` : 'Ошибка загрузки файла.');
-    b.disabled = false;
+    if (b) b.disabled = false;
   }
 }
 
@@ -667,6 +736,7 @@ if (mtypesRow) {
     if (!pill) return;
     mctype = pill.dataset.type;
     mtab = 'mod';
+    mcat.clear();
     mchips();
     msearch();
   };
@@ -693,6 +763,40 @@ if (msrcGroup) {
     msrc = b.dataset.s;
     mchips();
     msearch();
+  };
+}
+
+// Category chips click handler
+const mcatsSidebar = document.getElementById('mcats');
+if (mcatsSidebar) {
+  mcatsSidebar.onclick = e => {
+    const chip = e.target.closest('[data-c]');
+    if (!chip) return;
+    const c = chip.dataset.c;
+    if (!c || c === 'all') {
+      mcat.clear();
+    } else {
+      if (mcat.has(c)) {
+        mcat.delete(c);
+      } else {
+        mcat.add(c);
+      }
+    }
+    mchips();
+    moff = 0;
+    if (mtab === 'inst') minst();
+    else if (mtab === 'mine') rMine();
+    else msearch();
+  };
+}
+
+// Top bar create instance button
+const btnNewInstTop = document.getElementById('btn_new_instance_top');
+if (btnNewInstTop) {
+  btnNewInstTop.onclick = () => {
+    const curV = document.getElementById('mv')?.value || '1.21.1';
+    const curL = document.getElementById('mld_sel')?.value || 'Fabric';
+    window.openNewPackDialog('', curV, curL);
   };
 }
 
@@ -781,14 +885,30 @@ window.updateAllVersionDropdowns = function(list) {
 };
 
 // Open dialogs
-window.openNewPackDialog = function() {
+window.openNewPackDialog = function(presetName, presetV, presetL) {
   const dlg = document.getElementById('pkn');
   if (dlg) {
-    document.getElementById('pnn').value = '';
-    document.getElementById('pnd').value = '';
+    const pnn = document.getElementById('pnn');
+    if (pnn) pnn.value = presetName || '';
+    const pnd = document.getElementById('pnd');
+    if (pnd) pnd.value = '';
+    const pne = document.getElementById('pne');
+    if (pne) pne.textContent = '';
+
     const pnv = document.getElementById('pnv');
     const mv = document.getElementById('mv');
-    if (pnv && mv) pnv.innerHTML = mv.innerHTML;
+    if (pnv) {
+      if (mv && mv.innerHTML) pnv.innerHTML = mv.innerHTML;
+      else pnv.innerHTML = '<option value="1.21.4">1.21.4</option><option value="1.21.1" selected>1.21.1</option><option value="1.20.1">1.20.1</option><option value="1.19.4">1.19.4</option><option value="1.18.2">1.18.2</option><option value="1.16.5">1.16.5</option><option value="1.12.2">1.12.2</option>';
+      if (presetV) pnv.value = presetV;
+    }
+
+    const pnl = document.getElementById('pnl');
+    if (pnl) {
+      pnl.innerHTML = '<option value="Fabric">Fabric</option><option value="Forge">Forge</option><option value="NeoForge">NeoForge</option><option value="Quilt">Quilt</option><option value="Vanilla">Vanilla</option>';
+      if (presetL) pnl.value = presetL;
+    }
+
     dlg.showModal();
   }
 };
@@ -814,6 +934,13 @@ if (pnokBtn) {
       toast(`Сборка «${n}» создана!`);
       document.getElementById('pkn')?.close();
       await window.syncDiskPacks();
+      window.updateTargetInstanceDropdown();
+      const mtargetSel = document.getElementById('mtarget');
+      if (mtargetSel) mtargetSel.value = safeId;
+      if (window._onNewInstanceCreated) {
+        window._onNewInstanceCreated(safeId, n);
+        window._onNewInstanceCreated = null;
+      }
       if (mtab === 'mine') rMine();
     }
   };
@@ -874,46 +1001,122 @@ setTimeout(() => {
   mchips();
 }, 200);
 
-// Pack add dialog handlers (pkd)
-let pendingPackItem = null;
-window.openAddToPackDialog = function(item) {
-  pendingPackItem = item;
+// Pack add and download choice dialog handlers (pkd)
+let pendingDownloadItem = null;
+
+window.openDownloadChoiceDialog = function(item) {
+  pendingDownloadItem = item;
   const dlg = document.getElementById('pkd');
   if (!dlg) return;
+
+  const itemName = (item && (item.t || item.title || item.name)) || '';
+  const itemType = (item && (item.pt || item.type || mctype)) || 'mod';
+  const itemSrc = (item && (item.src || msrc)) || 'mr';
+
+  const pkt = document.getElementById('pkt');
+  if (pkt) pkt.textContent = `Установка «${itemName}»`;
+
+  const typeLabels = {
+    mod: 'Мод',
+    resourcepack: 'Ресурс-пак',
+    shader: 'Шейдер',
+    datapack: 'Аддон',
+    modpack: 'Сборка'
+  };
+  const badge = document.getElementById('pkd_badge');
+  if (badge) badge.textContent = typeLabels[itemType] || 'Мод';
+
   const pkm = document.getElementById('pkm');
-  if (pkm) pkm.textContent = (item && (item.title || item.name)) || '';
+  if (pkm) {
+    pkm.innerHTML = `Источник: <b>${itemSrc === 'cf' ? 'CurseForge' : 'Modrinth'}</b> • Выберите сборку для установки:`;
+  }
+
+  // Populate pks with Library + all available user instances
   const pks = document.getElementById('pks');
   if (pks) {
-    pks.innerHTML = (ST.packs || []).map(p => `<option value="${p.id}">${esc(p.name)} (${p.v || '1.21.1'})</option>`).join('');
+    let opts = '<option value="_library">📁 В общую библиотеку (Library)</option>';
+    if (ST.packs && ST.packs.length > 0) {
+      opts += '<optgroup label="Ваши сборки">';
+      for (const p of ST.packs) {
+        opts += `<option value="${esc(p.id)}">🌸 ${esc(p.name)} (${esc(p.v || '1.21.1')} • ${esc(p.l || 'Fabric')})</option>`;
+      }
+      opts += '</optgroup>';
+    }
+    pks.innerHTML = opts;
+
+    const curTarget = window.getTargetInstanceId();
+    if ([...pks.options].some(o => o.value === curTarget)) {
+      pks.value = curTarget;
+    } else if (ST.packs && ST.packs.length > 0) {
+      pks.value = ST.packs[0].id;
+    }
   }
+
+  // Hook "+ Создать новую сборку" inside the dialog
+  const newInstBtn = document.getElementById('pkd_new_instance_btn');
+  if (newInstBtn) {
+    newInstBtn.onclick = () => {
+      const curV = document.getElementById('mv')?.value || '1.21.1';
+      const curL = document.getElementById('mld_sel')?.value || 'Fabric';
+
+      window._onNewInstanceCreated = (newId, newName) => {
+        window.updateTargetInstanceDropdown();
+        if (pks) {
+          let opts = '<option value="_library">📁 В общую библиотеку (Library)</option>';
+          if (ST.packs && ST.packs.length > 0) {
+            opts += '<optgroup label="Ваши сборки">';
+            for (const p of ST.packs) {
+              opts += `<option value="${esc(p.id)}">🌸 ${esc(p.name)} (${esc(p.v || '1.21.1')} • ${esc(p.l || 'Fabric')})</option>`;
+            }
+            opts += '</optgroup>';
+          }
+          pks.innerHTML = opts;
+          pks.value = newId;
+        }
+        const mtargetSel = document.getElementById('mtarget');
+        if (mtargetSel) mtargetSel.value = newId;
+        toast(`Сборка «${newName}» создана и выбрана для установки!`);
+      };
+
+      window.openNewPackDialog(`Сборка с ${itemName}`.substring(0, 36), curV, curL);
+    };
+  }
+
+  // Hook "Скачать и установить" button
+  const pko = document.getElementById('pko');
+  if (pko) {
+    pko.onclick = async () => {
+      const target = pks ? pks.value : '_library';
+      dlg.close();
+
+      const mtargetSel = document.getElementById('mtarget');
+      if (mtargetSel) mtargetSel.value = target;
+
+      if (pendingDownloadItem.fileUrl || pendingDownloadItem.url) {
+        // Direct file add
+        toast(`Установка «${itemName}» в ${target === '_library' ? 'библиотеку' : 'сборку'}...`);
+        try {
+          const folder = getFolderForType(itemType);
+          const res = await window.sakura.downloadModToPack(target, pendingDownloadItem.fileUrl || pendingDownloadItem.url, pendingDownloadItem.fileName || pendingDownloadItem.filename, folder);
+          if (res && res.ok) {
+            toast('Успешно добавлено!');
+            await window.syncDiskPacks();
+          } else {
+            toast('Ошибка добавления файла');
+          }
+        } catch(e) {
+          toast('Ошибка: ' + e.message);
+        }
+      } else {
+        await executeDownloadItem(pendingDownloadItem, target);
+      }
+    };
+  }
+
   dlg.showModal();
 };
 
+window.openAddToPackDialog = window.openDownloadChoiceDialog;
+
 const pkcBtn = document.getElementById('pkc');
 if (pkcBtn) pkcBtn.onclick = () => document.getElementById('pkd')?.close();
-
-const pkoBtn = document.getElementById('pko');
-if (pkoBtn) {
-  pkoBtn.onclick = async () => {
-    const sel = document.getElementById('pks');
-    if (!sel || !sel.value || !pendingPackItem) {
-      document.getElementById('pkd')?.close();
-      return;
-    }
-    const packId = sel.value;
-    document.getElementById('pkd')?.close();
-    toast(`Установка «${pendingPackItem.title || pendingPackItem.name}» в сборку...`);
-    try {
-      const folder = getFolderForType(pendingPackItem.type || mctype);
-      const res = await window.sakura.downloadModToPack(packId, pendingPackItem.url, pendingPackItem.filename, folder);
-      if (res && res.ok) {
-        toast('Успешно добавлено в сборку!');
-        await window.syncDiskPacks();
-      } else {
-        toast('Ошибка добавления в сборку');
-      }
-    } catch(err) {
-      toast('Ошибка: ' + err.message);
-    }
-  };
-}
