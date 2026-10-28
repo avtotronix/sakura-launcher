@@ -320,7 +320,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     javaPath,
     version: { number: req.version, type: "release" },
     memory: { max: `${req.ram}G`, min: "1G" },
-    overrides: { detached: false, maxSockets: 8 },
+    overrides: { detached: true, maxSockets: 8 },
     customArgs: [] as string[],
   };
 
@@ -431,6 +431,9 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
 
   const proc = await client.launch(opts);
   if (!proc) throw new Error("Minecraft не запустился. Подробности в журнале (Ctrl+Shift+I).");
+  if (typeof (proc as any).unref === "function") {
+    try { (proc as any).unref(); } catch {}
+  }
   markInstalled(root, `${req.version}|${req.loader}`);
   send(wc, "game:started", { pid: (proc as any).pid });
 

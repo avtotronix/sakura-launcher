@@ -545,7 +545,7 @@ window.doLaunchGame = async () => {
     
     if (res.ok) {
       toast("Игра запущена!");
-      if (ST.cl) window.close();
+      if (ST.cl) { setTimeout(() => { try { window.close(); } catch {} }, 5000); }
     } else {
       toast("Ошибка запуска: " + res.error);
     }
