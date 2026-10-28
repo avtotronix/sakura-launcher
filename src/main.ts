@@ -454,23 +454,28 @@ function registerIPC(): void {
     const safeFile = path.basename(String(filename));
     const targetFolder = ["mods", "resourcepacks", "shaderpacks", "datapacks"].includes(folder) ? folder : "mods";
 
-    // 1. Always save master copy into Library
-    const libCategory = (targetFolder === "datapacks" ? "addons" : targetFolder) as any;
-    const libDir = contentManager.getLibraryDir(libCategory);
-    const masterPath = path.join(libDir, safeFile);
-    await download(String(url), masterPath);
+    try {
+      // 1. Always save master copy into Library
+      const libCategory = (targetFolder === "datapacks" ? "addons" : targetFolder) as any;
+      const libDir = contentManager.getLibraryDir(libCategory);
+      const masterPath = path.join(libDir, safeFile);
+      await download(String(url), masterPath);
 
-    // 2. If target instance specified and not _library, copy into instance
-    let finalPath = masterPath;
-    if (packId && packId !== "_library") {
-      const instDir = path.join(getGameDataDir(), "instances", path.basename(String(packId)), targetFolder);
-      if (!fs.existsSync(instDir)) fs.mkdirSync(instDir, { recursive: true });
-      const instPath = path.join(instDir, safeFile);
-      fs.copyFileSync(masterPath, instPath);
-      finalPath = instPath;
+      // 2. If target instance specified and not _library, copy into instance
+      let finalPath = masterPath;
+      if (packId && packId !== "_library") {
+        const instDir = path.join(getGameDataDir(), "instances", path.basename(String(packId)), targetFolder);
+        if (!fs.existsSync(instDir)) fs.mkdirSync(instDir, { recursive: true });
+        const instPath = path.join(instDir, safeFile);
+        fs.copyFileSync(masterPath, instPath);
+        finalPath = instPath;
+      }
+
+      return { ok: true, path: finalPath };
+    } catch (err: any) {
+      console.error("[pack:download-mod] Error:", err);
+      return { ok: false, error: err.message || String(err) };
     }
-
-    return { ok: true, path: finalPath };
   });
 
   const instancesManager = new InstancesManager(getGameDataDir);

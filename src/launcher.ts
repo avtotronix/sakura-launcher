@@ -4,6 +4,8 @@
 import { ipcMain, WebContents } from "electron";
 import fs from "fs";
 import path from "path";
+import os from "os";
+import cp from "child_process";
 import { Client } from "minecraft-launcher-core";
 import AdmZip from "adm-zip";
 import { download, getJson, safeId } from "./net";
@@ -43,16 +45,16 @@ async function requiredJava(mc: string): Promise<number> {
   }
 }
 
-function findJava(dir: string): string | null {
+function findJavaInDir(dir: string, depth = 3): string | null {
   const exe = process.platform === "win32" ? "javaw.exe" : "java";
-  const walk = (d: string, depth: number): string | null => {
+  const walk = (d: string, curDepth: number): string | null => {
     const cand = path.join(d, "bin", exe);
     if (fs.existsSync(cand)) return cand;
-    if (depth <= 0) return null;
+    if (curDepth <= 0) return null;
     try {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         if (e.isDirectory()) {
-          const r = walk(path.join(d, e.name), depth - 1);
+          const r = walk(path.join(d, e.name), curDepth - 1);
           if (r) return r;
         }
       }
@@ -61,26 +63,140 @@ function findJava(dir: string): string | null {
     }
     return null;
   };
-  return fs.existsSync(dir) ? walk(dir, 2) : null;
+  return fs.existsSync(dir) ? walk(dir, depth) : null;
+}
+
+function probeJavaMajor(javaExe: string): number | null {
+  try {
+    const dir = path.dirname(javaExe);
+    const cliExe = path.join(dir, process.platform === "win32" ? "java.exe" : "java");
+    const target = fs.existsSync(cliExe) ? cliExe : javaExe;
+    const res = cp.spawnSync(target, ["-version"], { encoding: "utf8", timeout: 4000 });
+    const output = (res.stderr || "") + " " + (res.stdout || "");
+    const match = output.match(/version "([0-9]+)(\.([0-9]+))?/);
+    if (match) {
+      const v = Number(match[1]);
+      return v === 1 ? Number(match[3]) : v;
+    }
+  } catch {}
+  return null;
+}
+
+function findSystemJava(requiredMajor: number): string | null {
+  if (process.platform !== "win32") return null;
+
+  const candidateDirs: string[] = [];
+  if (process.env.JAVA_HOME) candidateDirs.push(process.env.JAVA_HOME);
+  if (process.env.JDK_HOME) candidateDirs.push(process.env.JDK_HOME);
+
+  const progFiles = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"]].filter(Boolean) as string[];
+  for (const pf of progFiles) {
+    const vendors = ["Eclipse Adoptium", "Java", "Microsoft", "Zulu", "BellSoft", "Semeru"];
+    for (const v of vendors) {
+      const vp = path.join(pf, v);
+      if (fs.existsSync(vp)) {
+        try {
+          for (const ent of fs.readdirSync(vp, { withFileTypes: true })) {
+            if (ent.isDirectory()) candidateDirs.push(path.join(vp, ent.name));
+          }
+        } catch {}
+      }
+    }
+  }
+
+  for (const cand of candidateDirs) {
+    const found = findJavaInDir(cand, 2);
+    if (found) {
+      const maj = probeJavaMajor(found);
+      if (maj && (maj === requiredMajor || (requiredMajor === 17 && maj >= 17) || (requiredMajor === 21 && maj >= 21))) {
+        return found;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function ensureJava(root: string, major: number, wc: WebContents): Promise<string> {
   const feature = major === 16 ? 17 : major;
-  const dir = path.join(root, "runtime", `java-${feature}`);
-  const have = findJava(dir);
+  const targetDir = path.join(root, "runtime", `java-${feature}`);
+
+  // 1. Check target runtime folder
+  const have = findJavaInDir(targetDir);
   if (have) return have;
+
+  // 2. Check sibling runtime directories (e.g. Roaming/.sakura <-> D:/.sakura)
+  const candidateRoots = [
+    path.join(process.env.APPDATA || "", ".sakura"),
+    "D:\\.sakura",
+    path.join(os.homedir(), ".sakura"),
+  ];
+  for (const cr of candidateRoots) {
+    if (path.resolve(cr) === path.resolve(root)) continue;
+    const siblingDir = path.join(cr, "runtime", `java-${feature}`);
+    const siblingJava = findJavaInDir(siblingDir);
+    if (siblingJava) return siblingJava;
+  }
+
+  // 3. Check system-installed Java
+  const sysJava = findSystemJava(feature);
+  if (sysJava) return sysJava;
+
   if (process.platform !== "win32") return "java";
+
+  // 4. Download Java with fallback mirrors
   const arch = process.arch === "arm64" ? "aarch64" : "x64";
-  const url = `https://api.adoptium.net/v3/binary/latest/${feature}/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`;
+  const mirrors: string[] = [];
+
+  if (feature === 17) {
+    // Microsoft OpenJDK 17 (fast Azure CDN) -> Adoptium -> Zulu
+    mirrors.push("https://aka.ms/download-jdk/microsoft-jdk-17.0.12-windows-x64.zip");
+    mirrors.push(`https://api.adoptium.net/v3/binary/latest/17/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`);
+    mirrors.push("https://cdn.azul.com/zulu/bin/zulu17.52.17-ca-jre17.0.12-win_x64.zip");
+  } else if (feature === 21) {
+    // Microsoft OpenJDK 21 -> Adoptium
+    mirrors.push("https://aka.ms/download-jdk/microsoft-jdk-21.0.4-windows-x64.zip");
+    mirrors.push(`https://api.adoptium.net/v3/binary/latest/21/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`);
+  } else if (feature === 8) {
+    mirrors.push(`https://api.adoptium.net/v3/binary/latest/8/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`);
+    mirrors.push("https://cdn.azul.com/zulu/bin/zulu8.80.0.17-ca-jre8.0.422-win_x64.zip");
+  } else {
+    mirrors.push(`https://api.adoptium.net/v3/binary/latest/${feature}/ga/windows/${arch}/jre/hotspot/normal/eclipse?project=jdk`);
+  }
+
   const zip = path.join(root, "runtime", `java-${feature}.zip`);
-  send(wc, "game:progress", { stage: `Скачиваем Java ${feature}`, pct: 0 });
-  await download(url, zip, (d, t) => t && send(wc, "game:progress", { stage: `Скачиваем Java ${feature}`, pct: Math.round((d / t) * 100) }));
-  send(wc, "game:progress", { stage: `Распаковываем Java ${feature}`, pct: 100 });
-  new AdmZip(zip).extractAllTo(dir, true);
-  fs.unlinkSync(zip);
-  const j = findJava(dir);
-  if (!j) throw new Error("Не удалось установить Java");
-  return j;
+  fs.mkdirSync(path.join(root, "runtime"), { recursive: true });
+
+  let lastError: Error | null = null;
+  for (let mIdx = 0; mIdx < mirrors.length; mIdx++) {
+    const mirrorUrl = mirrors[mIdx];
+    const mirrorSuffix = mIdx > 0 ? ` (зеркало ${mIdx + 1})` : "";
+    try {
+      send(wc, "game:progress", { stage: `Скачиваем Java ${feature}${mirrorSuffix}`, pct: 0 });
+      await download(mirrorUrl, zip, (d, t) => {
+        if (t > 0) {
+          send(wc, "game:progress", {
+            stage: `Скачиваем Java ${feature}${mirrorSuffix}`,
+            pct: Math.min(99, Math.round((d / t) * 100)),
+          });
+        }
+      });
+
+      send(wc, "game:progress", { stage: `Распаковываем Java ${feature}`, pct: 100 });
+      fs.mkdirSync(targetDir, { recursive: true });
+      new AdmZip(zip).extractAllTo(targetDir, true);
+      try { fs.unlinkSync(zip); } catch {}
+
+      const installedJava = findJavaInDir(targetDir);
+      if (installedJava) return installedJava;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[ensureJava] Mirror ${mirrorUrl} failed:`, err.message || err);
+      try { if (fs.existsSync(zip)) fs.unlinkSync(zip); } catch {}
+    }
+  }
+
+  throw lastError || new Error(`Не удалось загрузить и установить Java ${feature}. Проверьте подключение к интернету.`);
 }
 
 // ─── authlib-injector (Ely.by skins & server auth) ───────────────────────────
@@ -184,7 +300,18 @@ function applyPlayerSkin(targetDir: string, dataUrl: string, isSlim: boolean) {
 async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSystem?: any) {
   const auth = await getLaunchAuth(req.elyAuth);
   let lv = "";
-  if (req.loader !== "Vanilla") {
+
+  if (req.packId) {
+    try {
+      const metaPath = path.join(root, "instances", req.packId, "instance.json");
+      if (fs.existsSync(metaPath)) {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+        if (meta.loaderVersion) lv = String(meta.loaderVersion);
+      }
+    } catch {}
+  }
+
+  if (req.loader !== "Vanilla" && !lv) {
     const matrix = await getMatrix();
     lv = matrix.loaders[req.loader]?.[req.version] || "";
     if (!lv) {
@@ -206,6 +333,39 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     overrides: { detached: false, maxSockets: 8 },
     customArgs: [] as string[],
   };
+
+  // Add optimal JVM arguments
+  const defaultJvmArgs = [
+    "-Dfile.encoding=UTF-8",
+    "-XX:+UseG1GC",
+    "-XX:+ParallelRefProcEnabled",
+    "-XX:MaxGCPauseMillis=200",
+    "-XX:+UnlockExperimentalVMOptions",
+    "-XX:+DisableExplicitGC",
+    "-XX:+AlwaysPreTouch",
+  ];
+  for (const flag of defaultJvmArgs) {
+    const key = flag.split("=")[0];
+    if (!opts.customArgs.some((a: string) => a.startsWith(key))) {
+      opts.customArgs.push(flag);
+    }
+  }
+
+  if (req.packId) {
+    try {
+      const metaPath = path.join(root, "instances", req.packId, "instance.json");
+      if (fs.existsSync(metaPath)) {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+        if (meta.jvmArgs && typeof meta.jvmArgs === "string") {
+          const extra = meta.jvmArgs.trim().split(/\s+/).filter(Boolean);
+          for (const arg of extra) {
+            if (!opts.customArgs.includes(arg)) opts.customArgs.push(arg);
+          }
+        }
+      }
+    } catch {}
+  }
+
   if (req.server) {
     const parts = req.server.split(":");
     opts.customArgs.push("--server", parts[0]);
