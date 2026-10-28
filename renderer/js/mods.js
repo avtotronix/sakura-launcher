@@ -48,8 +48,8 @@ const MOD_CATEGORIES = {
   ]
 };
 
-const LC = { F: 'Fabric', R: 'Forge', N: 'NeoForge', Q: 'Quilt' };
-const LK = { Fabric: 'fabric', Forge: 'forge', NeoForge: 'neoforge', Quilt: 'quilt', Vanilla: 'vanilla' };
+const LC = { F: 'Fabric', R: 'Forge', N: 'NeoForge', Q: 'Quilt', H: 'Horizon' };
+const LK = { Fabric: 'fabric', Forge: 'forge', NeoForge: 'neoforge', Quilt: 'quilt', Horizon: 'horizon', Vanilla: 'vanilla' };
 const CFL = { Forge: 1, Fabric: 4, Quilt: 5, NeoForge: 6 };
 
 let mctype = 'mod'; // 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'modpack'
@@ -79,9 +79,29 @@ window.updateTargetInstanceDropdown = function() {
   if (!sel) return;
   const cur = sel.value || '_library';
   const packs = (ST.packs || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.v || '1.21.1')})</option>`).join('');
-  sel.innerHTML = '<option value="_library">В библиотеку (Library)</option>' + packs;
+  sel.innerHTML = '<option value="_library">В основную игру и библиотеку (Library)</option>' + packs;
   if ([...sel.options].some(o => o.value === cur)) {
     sel.value = cur;
+  }
+};
+
+window.syncModsFilterWithPlayVersion = function() {
+  const verEl = document.getElementById('ver');
+  if (!verEl || !verEl.value) return;
+  const [v, l] = verEl.value.split('|');
+  const mv = document.getElementById('mv');
+  if (mv && v) {
+    if (![...mv.options].some(o => o.value === v)) {
+      mv.insertAdjacentHTML('afterbegin', `<option value="${esc(v)}">${esc(v)}</option>`);
+    }
+    mv.value = v;
+  }
+  const mldSel = document.getElementById('mld_sel');
+  if (mldSel && l && l !== 'Vanilla') {
+    if ([...mldSel.options].some(o => o.value === l)) {
+      mldSel.value = l;
+      mld = l;
+    }
   }
 };
 
@@ -599,6 +619,9 @@ window.installModpackItem = async function(id, name, src) {
 
 // Switch content type from sidebar / pill
 window.switchToModType = function(type) {
+  if (typeof window.syncModsFilterWithPlayVersion === 'function') {
+    window.syncModsFilterWithPlayVersion();
+  }
   if (type === 'instances') {
     mtab = 'mine';
     mchips();
@@ -905,7 +928,7 @@ window.openNewPackDialog = function(presetName, presetV, presetL) {
 
     const pnl = document.getElementById('pnl');
     if (pnl) {
-      pnl.innerHTML = '<option value="Fabric">Fabric</option><option value="Forge">Forge</option><option value="NeoForge">NeoForge</option><option value="Quilt">Quilt</option><option value="Vanilla">Vanilla</option>';
+      pnl.innerHTML = '<option value="Fabric">Fabric</option><option value="Forge">Forge</option><option value="NeoForge">NeoForge</option><option value="Quilt">Quilt</option><option value="Horizon">Horizon (Rust)</option><option value="Vanilla">Vanilla</option>';
       if (presetL) pnl.value = presetL;
     }
 
@@ -1034,7 +1057,7 @@ window.openDownloadChoiceDialog = function(item) {
   // Populate pks with Library + all available user instances
   const pks = document.getElementById('pks');
   if (pks) {
-    let opts = '<option value="_library">📁 В общую библиотеку (Library)</option>';
+    let opts = '<option value="_library">📁 В основную игру и библиотеку (Library)</option>';
     if (ST.packs && ST.packs.length > 0) {
       opts += '<optgroup label="Ваши сборки">';
       for (const p of ST.packs) {

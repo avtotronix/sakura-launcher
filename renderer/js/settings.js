@@ -718,7 +718,7 @@ window.checkForLauncherUpdate = async function() {
         window.showUpdateModal(res);
       } else {
         if (statusLbl) {
-          statusLbl.textContent = `У вас актуальная версия (v${res ? res.currentVersion : '0.1.6'})`;
+          statusLbl.textContent = `У вас актуальная версия (v${res ? res.currentVersion : '0.1.7'})`;
         }
         toast('У вас установлена последняя версия лаунчера!');
       }

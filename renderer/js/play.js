@@ -45,6 +45,7 @@ window.fetchVersions = async function() {
         if (type !== 'release' && !isSnap && !isOld && !ST.showSnap && !ST.showAlpha) return;
         
         items.push({ text: `${v} (Vanilla)`, val: `${v}|Vanilla` });
+        if (matrix.loaders?.Horizon && matrix.loaders.Horizon[v]) items.push({ text: `${v} (Horizon · Rust)`, val: `${v}|Horizon` });
         if (matrix.loaders?.Fabric && matrix.loaders.Fabric[v]) items.push({ text: `${v} (Fabric)`, val: `${v}|Fabric` });
         if (matrix.loaders?.Forge && matrix.loaders.Forge[v]) items.push({ text: `${v} (Forge)`, val: `${v}|Forge` });
         if (matrix.loaders?.NeoForge && matrix.loaders.NeoForge[v]) items.push({ text: `${v} (NeoForge)`, val: `${v}|NeoForge` });
@@ -55,6 +56,7 @@ window.fetchVersions = async function() {
     if (items.length === 0) {
       VL.forEach(v => {
         items.push({ text: `${v} (Vanilla)`, val: `${v}|Vanilla` });
+        if (v === '26.3') items.push({ text: `${v} (Horizon · Rust)`, val: `${v}|Horizon` });
         items.push({ text: `${v} (Fabric)`, val: `${v}|Fabric` });
         items.push({ text: `${v} (Forge)`, val: `${v}|Forge` });
         items.push({ text: `${v} (NeoForge)`, val: `${v}|NeoForge` });
@@ -65,6 +67,7 @@ window.fetchVersions = async function() {
     const curVal = (ST.lastVersion && items.some(it => it.val === ST.lastVersion)) ? ST.lastVersion : (vs.value || items[0].val);
     vs.innerHTML = items.map(it => `<option value="${it.val}">${it.text}</option>`).join('');
     if (items.some(it => it.val === curVal)) vs.value = curVal;
+    if (typeof window.syncModsFilterWithPlayVersion === 'function') window.syncModsFilterWithPlayVersion();
     window.upd();
   } catch(e) {
     console.error("Failed to fetch versions:", e);
@@ -85,7 +88,13 @@ window.upd = function() {
   if (st && !busy) st.textContent = '';
 };
 
-if (vs) vs.onchange = () => { $('#bi').style.width = '0'; ST.lastVersion = vs.value; save(); window.upd(); };
+if (vs) vs.onchange = () => {
+  $('#bi').style.width = '0';
+  ST.lastVersion = vs.value;
+  save();
+  if (typeof window.syncModsFilterWithPlayVersion === 'function') window.syncModsFilterWithPlayVersion();
+  window.upd();
+};
 
 window.doLaunchGame = async function(e) {
   if (busy) return;

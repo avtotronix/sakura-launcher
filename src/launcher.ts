@@ -12,7 +12,7 @@ import { download, getJson, safeId } from "./net";
 import { getLaunchAuth } from "./accounts";
 import { getMatrix, Loader } from "./versions";
 
-const LOADERS: Loader[] = ["Fabric", "Forge", "NeoForge", "Quilt", "Vanilla"];
+const LOADERS: Loader[] = ["Fabric", "Forge", "NeoForge", "Quilt", "Horizon", "Vanilla"];
 
 function send(wc: WebContents, ch: string, data: unknown) {
   if (!wc.isDestroyed()) wc.send(ch, data);
@@ -39,6 +39,7 @@ async function requiredJava(mc: string): Promise<number> {
     return j.javaVersion?.majorVersion ?? 21;
   } catch {
     const parts = mc.split(".").map(Number);
+    if (parts[0] >= 26) return 25;
     if (parts[0] >= 25 || (parts[0] === 1 && parts[1] >= 20 && (parts[2] ?? 0) >= 5)) return 21;
     if (parts[0] === 1 && parts[1] >= 17) return 17;
     return 8;
@@ -297,7 +298,583 @@ function applyPlayerSkin(targetDir: string, dataUrl: string, isSlim: boolean) {
   }
 }
 
+async function ensureHorizonRelease(root: string, wc: WebContents): Promise<string> {
+  const candidates: string[] = [];
+  const sakuraHorizon = path.join(root, "horizon");
+  if (fs.existsSync(sakuraHorizon)) {
+    try {
+      for (const d of fs.readdirSync(sakuraHorizon).sort().reverse()) {
+        candidates.push(path.join(sakuraHorizon, d));
+      }
+    } catch {}
+  }
+  const appdataHorizon = path.join(process.env.APPDATA || "", "horizon-launcher", "versions");
+  if (fs.existsSync(appdataHorizon)) {
+    try {
+      for (const d of fs.readdirSync(appdataHorizon).sort().reverse()) {
+        candidates.push(path.join(appdataHorizon, d));
+      }
+    } catch {}
+  }
+  const dSakuraHorizon = "D:\\.sakura\\horizon";
+  if (path.resolve(dSakuraHorizon) !== path.resolve(sakuraHorizon) && fs.existsSync(dSakuraHorizon)) {
+    try {
+      for (const d of fs.readdirSync(dSakuraHorizon).sort().reverse()) {
+        candidates.push(path.join(dSakuraHorizon, d));
+      }
+    } catch {}
+  }
+
+  for (const cand of candidates) {
+    if (
+      fs.existsSync(path.join(cand, "horizon-client.exe")) &&
+      fs.existsSync(path.join(cand, "horizon-prepare.exe")) &&
+      fs.existsSync(path.join(cand, "research-lock.json"))
+    ) {
+      return cand;
+    }
+  }
+
+  // Download latest Horizon release from GitHub if not found locally
+  send(wc, "game:progress", { stage: "Ищем релиз Horizon на GitHub…", pct: 5 });
+  const releases = await getJson<any[]>("https://api.github.com/repos/horizon-rust/horizon/releases");
+  const rel = releases.find(
+    (r) =>
+      Array.isArray(r.assets) &&
+      r.assets.some((a: any) => typeof a.name === "string" && a.name.includes("windows") && !a.name.includes("launcher"))
+  );
+  if (!rel) throw new Error("Не найден релиз Horizon для Windows на GitHub.");
+  const asset = rel.assets.find((a: any) => a.name.includes("windows") && !a.name.includes("launcher"));
+  const tag = rel.tag_name || "latest";
+  const targetDir = path.join(sakuraHorizon, tag);
+  const zipPath = path.join(sakuraHorizon, `${tag}.zip`);
+  fs.mkdirSync(sakuraHorizon, { recursive: true });
+
+  await download(asset.browser_download_url, zipPath, (d, t) => {
+    if (t > 0) {
+      send(wc, "game:progress", {
+        stage: `Скачиваем Horizon ${tag}`,
+        pct: Math.min(99, Math.round((d / t) * 100)),
+      });
+    }
+  });
+  send(wc, "game:progress", { stage: `Распаковываем Horizon ${tag}…`, pct: 100 });
+  fs.mkdirSync(targetDir, { recursive: true });
+  new AdmZip(zipPath).extractAllTo(targetDir, true);
+  try { fs.unlinkSync(zipPath); } catch {}
+  // If extracted into a single inner folder, flatten or return that folder
+  if (!fs.existsSync(path.join(targetDir, "horizon-client.exe"))) {
+    const sub = fs.readdirSync(targetDir).map((n) => path.join(targetDir, n)).find((p) => fs.existsSync(path.join(p, "horizon-client.exe")));
+    if (sub) return sub;
+  }
+  return targetDir;
+}
+
+async function runHorizonPrepareCmd(exe: string, args: string[], env: NodeJS.ProcessEnv, wc: WebContents, stagePrefix: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = cp.spawn(exe, args, { env, windowsHide: true });
+    let stderrText = "";
+    child.stdout.on("data", (buf) => {
+      const line = String(buf).trim();
+      if (line) {
+        send(wc, "game:log", `[Horizon] ${line}`);
+        send(wc, "game:progress", { stage: `${stagePrefix}: ${line.slice(0, 60)}`, pct: 50 });
+      }
+    });
+    child.stderr.on("data", (buf) => {
+      const line = String(buf).trim();
+      if (line) {
+        stderrText += line + "\n";
+        send(wc, "game:log", `[Horizon] ${line}`);
+      }
+    });
+    child.on("error", (err) => reject(err));
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`horizon-prepare завершился с кодом ${code}: ${stderrText.trim()}`));
+    });
+  });
+}
+
+function normalizeHorizonModId(raw: string): string {
+  let s = String(raw || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^[^a-z]+/, "");
+  if (!s) s = "mod_" + Math.random().toString(36).slice(2, 8);
+  return s.slice(0, 60);
+}
+
+function isValidHorizonContentPath(relPath: string): boolean {
+  const parts = relPath.split("/");
+  if (parts.length < 3) return false;
+  if (parts[0] !== "assets" && parts[0] !== "data") return false;
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i];
+    if (!p || p === "." || p === ".." || !/^[a-z0-9_.-]+$/.test(p)) return false;
+  }
+  return true;
+}
+
+function portJavaModJarToHorizon(
+  jarPath: string,
+  horizonModsDir: string,
+  claimedNamespaces: Set<string>
+): string | null {
+  try {
+    const zip = new AdmZip(jarPath);
+    const entries = zip.getEntries();
+
+    let rawId = "";
+    let modName = "";
+    let modVer = "1.0.0";
+
+    const fabricEntry = zip.getEntry("fabric.mod.json");
+    const quiltEntry = zip.getEntry("quilt.mod.json");
+    const neoEntry = zip.getEntry("META-INF/neoforge.mods.toml");
+    const forgeEntry = zip.getEntry("META-INF/mods.toml");
+
+    if (fabricEntry) {
+      try {
+        const j = JSON.parse(fabricEntry.getData().toString("utf8").replace(/^\uFEFF/, ""));
+        rawId = j.id || "";
+        modName = j.name || "";
+        modVer = String(j.version || "1.0.0");
+      } catch {}
+    } else if (quiltEntry) {
+      try {
+        const j = JSON.parse(quiltEntry.getData().toString("utf8").replace(/^\uFEFF/, ""));
+        rawId = j.quilt_loader?.id || "";
+        modName = j.quilt_loader?.metadata?.name || "";
+        modVer = String(j.quilt_loader?.version || "1.0.0");
+      } catch {}
+    } else if (neoEntry || forgeEntry) {
+      try {
+        const txt = (neoEntry || forgeEntry)!.getData().toString("utf8");
+        const mId = txt.match(/modId\s*=\s*"([^"]+)"/);
+        const mName = txt.match(/displayName\s*=\s*"([^"]+)"/);
+        const mVer = txt.match(/version\s*=\s*"([^"]+)"/);
+        if (mId) rawId = mId[1];
+        if (mName) modName = mName[1];
+        if (mVer && !mVer[1].includes("${")) modVer = mVer[1];
+      } catch {}
+    }
+
+    const stem = path.basename(jarPath, ".jar").replace(/-[0-9].*$/, "");
+    const modId = normalizeHorizonModId(rawId || stem);
+    if (!modName) modName = rawId || stem;
+    if (claimedNamespaces.has(modId)) return modId;
+    claimedNamespaces.add(modId);
+
+    const outDir = path.join(horizonModsDir, modId);
+    const tomlPath = path.join(outDir, "horizon-mod.toml");
+    if (fs.existsSync(tomlPath)) {
+      return modId;
+    }
+
+    fs.mkdirSync(outDir, { recursive: true });
+    const extraNamespaces = new Set<string>();
+    const blockstates = new Set<string>();
+    const itemModels = new Set<string>();
+    let filesWritten = 0;
+
+    const pluralDataMap: Array<[string, string]> = [
+      ["recipes/", "recipe/"],
+      ["loot_tables/", "loot_table/"],
+      ["structures/", "structure/"],
+      ["advancements/", "advancement/"],
+      ["tags/items/", "tags/item/"],
+      ["tags/blocks/", "tags/block/"],
+      ["tags/entity_types/", "tags/entity_type/"],
+      ["tags/fluids/", "tags/fluid/"],
+      ["tags/game_events/", "tags/game_event/"],
+    ];
+
+    const ignoredNs = new Set(["fabric", "quilt", "forge", "neoforge", "meta-inf", "java", "com", "net", "org"]);
+
+    for (const entry of entries) {
+      if (entry.isDirectory) continue;
+      let rel = entry.entryName.replace(/\\/g, "/").replace(/^\/+/, "");
+      if (!rel.startsWith("assets/") && !rel.startsWith("data/")) continue;
+
+      const parts = rel.split("/");
+      if (parts.length < 3) continue;
+      const top = parts[0];
+      const ns = parts[1];
+      let rest = parts.slice(2).join("/");
+
+      if (ignoredNs.has(ns) || !/^[a-z][a-z0-9_-]*$/.test(ns)) continue;
+
+      if (top === "data") {
+        for (const [oldPrefix, newPrefix] of pluralDataMap) {
+          if (rest.startsWith(oldPrefix)) {
+            rest = newPrefix + rest.slice(oldPrefix.length);
+            rel = `data/${ns}/${rest}`;
+            break;
+          }
+        }
+      }
+
+      if (!isValidHorizonContentPath(rel)) continue;
+
+      if (ns === "minecraft" || ns === "c") {
+        if (top !== "data" || !rest.startsWith("tags/")) continue;
+      } else if (ns !== modId) {
+        if (claimedNamespaces.has(ns)) continue;
+        extraNamespaces.add(ns);
+      }
+
+      let buf = entry.getData();
+      if (buf.length > 16 * 1024 * 1024) continue;
+
+      if (rel.endsWith(".json")) {
+        let str = buf.toString("utf8").replace(/^\uFEFF/, "");
+        try {
+          const parsed = JSON.parse(str);
+          buf = Buffer.from(JSON.stringify(parsed, null, 2), "utf8");
+        } catch {
+          continue;
+        }
+      }
+
+      if (top === "assets" && ns === modId) {
+        if (rest.startsWith("blockstates/") && rest.endsWith(".json")) {
+          const bName = rest.slice("blockstates/".length, -".json".length);
+          if (bName && !bName.includes("/")) blockstates.add(bName);
+        } else if (rest.startsWith("models/item/") && rest.endsWith(".json")) {
+          const iName = rest.slice("models/item/".length, -".json".length);
+          if (iName && !iName.includes("/")) itemModels.add(iName);
+        }
+      }
+
+      const destFile = path.join(outDir, rel);
+      fs.mkdirSync(path.dirname(destFile), { recursive: true });
+      fs.writeFileSync(destFile, buf);
+      filesWritten++;
+    }
+
+    for (const b of blockstates) {
+      const declFile = path.join(outDir, "data", modId, "horizon", "block", `${b}.json`);
+      fs.mkdirSync(path.dirname(declFile), { recursive: true });
+      fs.writeFileSync(declFile, JSON.stringify({ template: "minecraft:stone" }, null, 2), "utf8");
+      filesWritten++;
+    }
+
+    for (const m of itemModels) {
+      const itemDefFile = path.join(outDir, "assets", modId, "items", `${m}.json`);
+      if (!fs.existsSync(itemDefFile)) {
+        fs.mkdirSync(path.dirname(itemDefFile), { recursive: true });
+        fs.writeFileSync(
+          itemDefFile,
+          JSON.stringify({ model: { type: "minecraft:model", model: `${modId}:item/${m}` } }, null, 2),
+          "utf8"
+        );
+        filesWritten++;
+      }
+      if (!blockstates.has(m)) {
+        const declFile = path.join(outDir, "data", modId, "horizon", "item", `${m}.json`);
+        fs.mkdirSync(path.dirname(declFile), { recursive: true });
+        fs.writeFileSync(declFile, JSON.stringify({ template: "minecraft:stick" }, null, 2), "utf8");
+        filesWritten++;
+      }
+    }
+
+    if (filesWritten === 0) {
+      const fallbackLang = path.join(outDir, "assets", modId, "lang", "en_us.json");
+      fs.mkdirSync(path.dirname(fallbackLang), { recursive: true });
+      fs.writeFileSync(fallbackLang, "{}\n", "utf8");
+    }
+
+    for (const ns of extraNamespaces) {
+      claimedNamespaces.add(ns);
+    }
+
+    const escToml = (v: string) => JSON.stringify(String(v || "").replace(/[\r\n]+/g, " "));
+    const nsList = [...extraNamespaces].map(escToml).join(", ");
+    const toml = [
+      `id = ${escToml(modId)}`,
+      `name = ${escToml(modName)}`,
+      `version = ${escToml(modVer)}`,
+      `api = "0.2"`,
+      `side = "both"`,
+      `capabilities = ["registries"]`,
+      ...(nsList ? [`namespaces = [${nsList}]`] : []),
+      "",
+    ].join("\n");
+
+    fs.writeFileSync(tomlPath, toml, "utf8");
+    return modId;
+  } catch (err) {
+    console.warn("[Horizon] Failed to port jar mod:", jarPath, err);
+    return null;
+  }
+}
+
+function syncHorizonMods(targetGameDir: string, root: string, wc: WebContents) {
+  const horizonModsDir = path.join(targetGameDir, "horizon-mods");
+  fs.mkdirSync(horizonModsDir, { recursive: true });
+
+  const srcDirs: string[] = [path.join(targetGameDir, "mods")];
+  if (targetGameDir === root) {
+    srcDirs.push(path.join(root, "Library", "mods"));
+    if (fs.existsSync("D:\\.sakura")) {
+      srcDirs.push(path.join("D:\\.sakura", "mods"));
+      srcDirs.push(path.join("D:\\.sakura", "Library", "mods"));
+    }
+  }
+
+  // Also sync resourcepacks from Library when running root profile
+  if (targetGameDir === root) {
+    const rpLib = path.join(root, "Library", "resourcepacks");
+    const rpDest = path.join(targetGameDir, "resourcepacks");
+    if (fs.existsSync(rpLib)) {
+      fs.mkdirSync(rpDest, { recursive: true });
+      try {
+        for (const f of fs.readdirSync(rpLib)) {
+          if (f.endsWith(".zip")) {
+            const dst = path.join(rpDest, f);
+            if (!fs.existsSync(dst)) {
+              try { fs.copyFileSync(path.join(rpLib, f), dst); } catch {}
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+
+  const enabledModIds = new Set<string>();
+  const claimedNamespaces = new Set<string>();
+
+  for (const dir of srcDirs) {
+    if (!fs.existsSync(dir)) continue;
+    let files: string[] = [];
+    try { files = fs.readdirSync(dir); } catch { continue; }
+
+    for (const file of files) {
+      if (file.endsWith(".disabled") || file.endsWith(".part") || file.endsWith(".tmp")) continue;
+      const fullPath = path.join(dir, file);
+      try {
+        if (fs.statSync(fullPath).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+
+      if (file.toLowerCase().endsWith(".hmod")) {
+        const destHmod = path.join(horizonModsDir, file);
+        try {
+          if (fullPath !== destHmod) fs.copyFileSync(fullPath, destHmod);
+          let hmodId = file.replace(/-[0-9].*\.hmod$/i, "").replace(/\.hmod$/i, "");
+          try {
+            const z = new AdmZip(destHmod);
+            const tEntry = z.getEntry("horizon-mod.toml");
+            if (tEntry) {
+              const txt = tEntry.getData().toString("utf8");
+              const m = txt.match(/^\s*id\s*=\s*"([^"]+)"/m);
+              if (m) hmodId = m[1];
+            }
+          } catch {}
+          enabledModIds.add(hmodId);
+          claimedNamespaces.add(hmodId);
+        } catch {}
+      } else if (file.toLowerCase().endsWith(".jar")) {
+        send(wc, "game:progress", { stage: `Адаптация мода ${file} для Horizon…`, pct: 92 });
+        const portedId = portJavaModJarToHorizon(fullPath, horizonModsDir, claimedNamespaces);
+        if (portedId) {
+          enabledModIds.add(portedId);
+        }
+      }
+    }
+  }
+
+  // Also check any existing .hmod or folders in horizon-mods
+  try {
+    for (const item of fs.readdirSync(horizonModsDir)) {
+      if (item.toLowerCase().endsWith(".hmod")) {
+        let hmodId = item.replace(/-[0-9].*\.hmod$/i, "").replace(/\.hmod$/i, "");
+        try {
+          const z = new AdmZip(path.join(horizonModsDir, item));
+          const tEntry = z.getEntry("horizon-mod.toml");
+          if (tEntry) {
+            const txt = tEntry.getData().toString("utf8");
+            const m = txt.match(/^\s*id\s*=\s*"([^"]+)"/m);
+            if (m) hmodId = m[1];
+          }
+        } catch {}
+        enabledModIds.add(hmodId);
+      }
+    }
+  } catch {}
+
+  const modsTxtPath = path.join(targetGameDir, "horizon-mods.txt");
+  const existingLines: string[] = [];
+  const seenKeys = new Set<string>();
+
+  if (fs.existsSync(modsTxtPath)) {
+    try {
+      const content = fs.readFileSync(modsTxtPath, "utf8");
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const idx = trimmed.indexOf(":");
+        if (idx > 0) {
+          const k = trimmed.slice(0, idx).trim();
+          seenKeys.add(k);
+        }
+        existingLines.push(trimmed);
+      }
+    } catch {}
+  }
+
+  for (const id of enabledModIds) {
+    const key = `mod.${id}`;
+    if (!seenKeys.has(key)) {
+      existingLines.push(`${key}:true`);
+      seenKeys.add(key);
+    }
+  }
+
+  if (existingLines.length > 0) {
+    try {
+      fs.writeFileSync(modsTxtPath, existingLines.join("\n") + "\n", "utf8");
+    } catch {}
+  }
+}
+
+function syncRootLibraryMods(root: string) {
+  for (const folder of ["mods", "resourcepacks", "shaderpacks"]) {
+    const libDir = path.join(root, "Library", folder);
+    const destDir = path.join(root, folder);
+    if (!fs.existsSync(libDir)) continue;
+    fs.mkdirSync(destDir, { recursive: true });
+    try {
+      for (const f of fs.readdirSync(libDir)) {
+        if (f.endsWith(".part") || f.endsWith(".tmp") || f.endsWith(".hmod")) continue;
+        const src = path.join(libDir, f);
+        const dst = path.join(destDir, f);
+        if (!fs.existsSync(dst) && !fs.existsSync(dst + ".disabled")) {
+          try {
+            if (!fs.statSync(src).isDirectory()) fs.copyFileSync(src, dst);
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+}
+
+async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, friendsSystem?: any) {
+  const auth = await getLaunchAuth(req.elyAuth);
+  const horizonDir = await ensureHorizonRelease(root, wc);
+  const javaExe = await ensureJava(root, 25, wc);
+  const javaHome = path.dirname(path.dirname(javaExe));
+
+  // Ensure raw Mojang 26.3.json and 34.json asset index exist in root (or D:\.sakura)
+  let mcDir = root;
+  if (!fs.existsSync(path.join(mcDir, "versions", "26.3", "26.3.jar")) && fs.existsSync("D:\\.sakura\\versions\\26.3\\26.3.jar")) {
+    mcDir = "D:\\.sakura";
+  }
+
+  const cachedJson = path.join(mcDir, "cache", "json", "26.3.json");
+  const verJson = path.join(mcDir, "versions", "26.3", "26.3.json");
+  if (fs.existsSync(cachedJson)) {
+    try { fs.copyFileSync(cachedJson, verJson); } catch {}
+  }
+
+  const mclcAssetIdx = path.join(mcDir, "assets", "indexes", "26.3.json");
+  const vanillaAssetIdx = path.join(mcDir, "assets", "indexes", "34.json");
+  if (fs.existsSync(mclcAssetIdx) && !fs.existsSync(vanillaAssetIdx)) {
+    try { fs.copyFileSync(mclcAssetIdx, vanillaAssetIdx); } catch {}
+  }
+
+  // Ensure server.jar for 26.3
+  const serverJar = path.join(mcDir, "versions", "26.3", "server.jar");
+  if (!fs.existsSync(serverJar)) {
+    if (!fs.existsSync(verJson)) {
+      throw new Error("Сначала установите Minecraft 26.3 (Vanilla), чтобы загрузить базовые файлы игры.");
+    }
+    const vData = JSON.parse(fs.readFileSync(verJson, "utf8"));
+    const srvUrl = vData?.downloads?.server?.url;
+    if (!srvUrl) throw new Error("Не найден URL server.jar в 26.3.json");
+    send(wc, "game:progress", { stage: "Скачиваем server.jar для Horizon…", pct: 10 });
+    await download(srvUrl, serverJar, (d, t) => {
+      if (t > 0) {
+        send(wc, "game:progress", {
+          stage: "Скачиваем server.jar для Horizon…",
+          pct: Math.min(99, Math.round((d / t) * 100)),
+        });
+      }
+    });
+  }
+
+  const resourcesDir = path.join(horizonDir, ".local", "horizon-client", "26.3");
+  const manifestFile = path.join(resourcesDir, "horizon-resources.json");
+  const prepareExe = path.join(horizonDir, "horizon-prepare.exe");
+  const env = { ...process.env, JAVA_HOME: javaHome, HORIZON_MINECRAFT_DIR: mcDir };
+
+  if (!fs.existsSync(manifestFile)) {
+    send(wc, "game:progress", { stage: "Подготовка ресурсов Horizon (первый запуск ~1 мин)…", pct: 25 });
+    await runHorizonPrepareCmd(
+      prepareExe,
+      ["--prepare", "--minecraft-dir", mcDir, "--server-jar", serverJar, "--root", horizonDir],
+      env,
+      wc,
+      "Horizon Prepare"
+    );
+    send(wc, "game:progress", { stage: "Импорт звуков Horizon…", pct: 85 });
+    await runHorizonPrepareCmd(
+      prepareExe,
+      ["sounds", "--minecraft-dir", mcDir, "--root", horizonDir],
+      env,
+      wc,
+      "Horizon Sounds"
+    );
+  }
+
+  const targetGameDir = req.packId ? path.join(root, "instances", req.packId) : root;
+  fs.mkdirSync(targetGameDir, { recursive: true });
+  if (req.skinData) {
+    applyPlayerSkin(targetGameDir, req.skinData, !!req.skinSlim);
+  }
+  syncHorizonMods(targetGameDir, root, wc);
+
+  const playerName = req.nick || auth.name || "Player";
+  const clientExe = path.join(horizonDir, "horizon-client.exe");
+  const clientArgs = ["--resources", resourcesDir, "--name", playerName];
+  if (req.server) {
+    clientArgs.push("--server", req.server);
+  }
+
+  send(wc, "game:progress", { stage: "Запускаем Horizon (Rust)…", pct: 100 });
+  const proc = cp.spawn(clientExe, clientArgs, {
+    cwd: targetGameDir,
+    env: {
+      ...process.env,
+      HORIZON_HOME: targetGameDir,
+      HORIZON_PLAYER_NAME: playerName,
+    },
+    detached: true,
+  });
+
+  proc.stdout?.on("data", (m) => send(wc, "game:log", String(m)));
+  proc.stderr?.on("data", (m) => send(wc, "game:log", String(m)));
+  proc.on("close", (code) => {
+    send(wc, "game:closed", { code: code ?? 0 });
+    if (friendsSystem) {
+      try { friendsSystem.stopMonitoring(); } catch {}
+    }
+  });
+
+  if (typeof proc.unref === "function") {
+    try { proc.unref(); } catch {}
+  }
+
+  markInstalled(root, `${req.version}|Horizon`);
+  send(wc, "game:started", { pid: proc.pid });
+}
+
 async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSystem?: any) {
+  if (req.loader === "Horizon") {
+    return launchHorizon(req, root, wc, friendsSystem);
+  }
   const auth = await getLaunchAuth(req.elyAuth);
   let lv = "";
 
@@ -366,6 +943,8 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     const modsDir = path.join(targetGameDir, "mods");
     if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
     opts.overrides.gameDirectory = targetGameDir;
+  } else {
+    syncRootLibraryMods(root);
   }
   if (req.skinData) {
     applyPlayerSkin(targetGameDir, req.skinData, !!req.skinSlim);

@@ -7,6 +7,7 @@ import path from "path";
 
 const ALLOWED_HOSTS = [
   "piston-meta.mojang.com",
+  "piston-data.mojang.com",
   "launchermeta.mojang.com",
   "libraries.minecraft.net",
   "resources.download.minecraft.net",
@@ -25,7 +26,9 @@ const ALLOWED_HOSTS = [
   "cdn.azul.com",
   "azul.com",
   "corretto.aws",
+  "api.github.com",
   "github.com",
+  "horizon-rust.github.io",
   "raw.githubusercontent.com",
   "objects.githubusercontent.com",
   "release-assets.githubusercontent.com",

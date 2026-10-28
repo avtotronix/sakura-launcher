@@ -127,7 +127,12 @@ export class CurseForgeProvider {
 
     try {
       const url = `${BASE_URL}/mods/search?${params.toString()}`;
-      const res = await getJson<any>(url, { headers: this.getHeaders() });
+      let res = await getJson<any>(url, { headers: this.getHeaders() });
+      if ((!res.data || res.data.length === 0) && opts.gameVersion && opts.gameVersion.startsWith("26.")) {
+        params.set("gameVersion", "1.21.1");
+        const fallbackUrl = `${BASE_URL}/mods/search?${params.toString()}`;
+        res = await getJson<any>(fallbackUrl, { headers: this.getHeaders() });
+      }
       const hits: CurseForgeHit[] = (res.data || []).map((h: any) => ({
         id: String(h.id),
         name: h.name,

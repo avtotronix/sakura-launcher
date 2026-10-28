@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { getJson } from "./net";
 
-export type Loader = "Fabric" | "Forge" | "NeoForge" | "Quilt" | "Vanilla";
+export type Loader = "Fabric" | "Forge" | "NeoForge" | "Quilt" | "Horizon" | "Vanilla";
 export interface Matrix {
   releases: string[]; // newest first
   versionTypes: Record<string, string>;
@@ -107,8 +107,8 @@ export async function build(): Promise<Matrix> {
   }
 
   const rel = new Set(releases);
-  const loaders: Matrix["loaders"] = { Fabric: {}, Forge: {}, NeoForge: {}, Quilt: {}, Vanilla: {} };
-  const loaderVersions: Matrix["loaderVersions"] = { Fabric: {}, Forge: {}, NeoForge: {}, Quilt: {}, Vanilla: {} };
+  const loaders: Matrix["loaders"] = { Fabric: {}, Forge: {}, NeoForge: {}, Quilt: {}, Horizon: {}, Vanilla: {} };
+  const loaderVersions: Matrix["loaderVersions"] = { Fabric: {}, Forge: {}, NeoForge: {}, Quilt: {}, Horizon: {}, Vanilla: {} };
 
   if (fab.status === "fulfilled" && fabLoaders.status === "fulfilled" && Array.isArray(fab.value)) {
     const allLoaders = (fabLoaders.value || []).map((l: any) => l.version);
@@ -164,6 +164,9 @@ export async function build(): Promise<Matrix> {
   if (!loaders.NeoForge["26.3"]) loaders.NeoForge["26.3"] = "26.3.0.99";
   if (!loaderVersions.NeoForge["26.3"]) loaderVersions.NeoForge["26.3"] = ["26.3.0.99"];
 
+  loaders.Horizon["26.3"] = "v0.2.94";
+  loaderVersions.Horizon["26.3"] = ["v0.2.94"];
+
   const result: Matrix = { releases, versionTypes, latest, loaders, loaderVersions, fetchedAt: Date.now() };
   writeDiskCache(result);
   return result;
@@ -173,6 +176,13 @@ export async function getMatrix(force = false): Promise<Matrix> {
   if (cache && !force) return cache;
   const disk = readDiskCache();
   if (disk && disk.releases && disk.releases.length > 0) {
+    if (!disk.loaders) (disk as any).loaders = {};
+    if (!disk.loaders.Horizon) disk.loaders.Horizon = {};
+    if (!disk.loaders.Horizon["26.3"]) disk.loaders.Horizon["26.3"] = "v0.2.94";
+    if (disk.loaderVersions) {
+      if (!disk.loaderVersions.Horizon) disk.loaderVersions.Horizon = {};
+      if (!disk.loaderVersions.Horizon["26.3"]) disk.loaderVersions.Horizon["26.3"] = ["v0.2.94"];
+    }
     cache = disk;
     // Asynchronously refresh in background without blocking launcher startup
     if (Date.now() - (disk.fetchedAt || 0) > 120 * 60_000) {
@@ -197,5 +207,17 @@ export function installedCombos(root: string): string[] {
       else if ((m = d.match(/^sakura-neoforge-(.+)$/))) out.push(`${m[1]}|NeoForge`);
     }
   } catch { /* no versions yet */ }
+  try {
+    const hDir = path.join(root, "horizon");
+    if (fs.existsSync(hDir)) {
+      for (const v of fs.readdirSync(hDir)) {
+        const res = path.join(hDir, v, ".local", "horizon-client", "26.3", "horizon-resources.json");
+        if (fs.existsSync(res)) {
+          out.push("26.3|Horizon");
+          break;
+        }
+      }
+    }
+  } catch {}
   return out;
 }

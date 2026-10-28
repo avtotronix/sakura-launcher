@@ -183,10 +183,22 @@ export class ContentManager {
   public deleteFromLibrary(category: ContentCategory, filename: string): boolean {
     const cleanFile = safeName(filename);
     const libPath = path.join(this.getLibraryDir(category), cleanFile);
+    let removed = false;
     if (fs.existsSync(libPath)) {
-      try { fs.unlinkSync(libPath); return true; } catch {}
+      try { fs.unlinkSync(libPath); removed = true; } catch {}
     }
-    return false;
+    const instFolder = this.mapCategoryToInstanceFolder(category);
+    const rootFile = path.join(this.getRoot(), instFolder, cleanFile);
+    if (fs.existsSync(rootFile)) {
+      try { fs.unlinkSync(rootFile); removed = true; } catch {}
+    }
+    if (fs.existsSync("D:\\.sakura")) {
+      const dFile = path.join("D:\\.sakura", instFolder, cleanFile);
+      if (fs.existsSync(dFile)) {
+        try { fs.unlinkSync(dFile); removed = true; } catch {}
+      }
+    }
+    return removed;
   }
 
   /**
