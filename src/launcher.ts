@@ -301,17 +301,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
   const auth = await getLaunchAuth(req.elyAuth);
   let lv = "";
 
-  if (req.packId) {
-    try {
-      const metaPath = path.join(root, "instances", req.packId, "instance.json");
-      if (fs.existsSync(metaPath)) {
-        const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
-        if (meta.loaderVersion) lv = String(meta.loaderVersion);
-      }
-    } catch {}
-  }
-
-  if (req.loader !== "Vanilla" && !lv) {
+  if (req.loader !== "Vanilla") {
     const matrix = await getMatrix();
     lv = matrix.loaders[req.loader]?.[req.version] || "";
     if (!lv) {

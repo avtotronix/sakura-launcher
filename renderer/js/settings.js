@@ -702,26 +702,38 @@ if (window.sakura && window.sakura.onUpdateAvailable) {
   });
 }
 
+window.checkForLauncherUpdate = async function() {
+  const btn = document.getElementById('btn_check_update_logs');
+  const statusLbl = document.getElementById('logs_upd_status');
+  if (btn) btn.disabled = true;
+  if (statusLbl) statusLbl.textContent = 'Проверка обновлений на GitHub...';
+  toast('Проверяем обновления на GitHub...');
+  try {
+    if (window.sakura && window.sakura.checkForUpdates) {
+      const res = await window.sakura.checkForUpdates();
+      if (res && res.hasUpdate) {
+        if (statusLbl) {
+          statusLbl.innerHTML = `<b style="color:#ff75b5">Доступно обновление v${res.latestVersion}!</b>`;
+        }
+        window.showUpdateModal(res);
+      } else {
+        if (statusLbl) {
+          statusLbl.textContent = `У вас актуальная версия (v${res ? res.currentVersion : '0.1.6'})`;
+        }
+        toast('У вас установлена последняя версия лаунчера!');
+      }
+    }
+  } catch(e) {
+    if (statusLbl) statusLbl.textContent = 'Ошибка проверки обновлений';
+    toast('Не удалось связаться с сервером обновлений');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
 const checkUpdBtn = document.getElementById('check_upd_btn');
 if (checkUpdBtn) {
-  checkUpdBtn.onclick = async () => {
-    checkUpdBtn.disabled = true;
-    toast('Проверяем обновления...');
-    try {
-      if (window.sakura && window.sakura.checkForUpdates) {
-        const res = await window.sakura.checkForUpdates();
-        if (res && res.hasUpdate) {
-          window.showUpdateModal(res);
-        } else {
-          toast('У вас установлена последняя версия лаунчера!');
-        }
-      }
-    } catch(e) {
-      toast('Не удалось проверить обновления');
-    } finally {
-      checkUpdBtn.disabled = false;
-    }
-  };
+  checkUpdBtn.onclick = () => window.checkForLauncherUpdate();
 }
 
 if (window.sakura && window.sakura.getVersion) {

@@ -1,7 +1,7 @@
 {
   "name": "sakura-launcher",
   "productName": "Sakura Launcher",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Sakura Minecraft Launcher",
   "main": "dist/main.js",
   "author": "Sakura Team",

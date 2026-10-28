@@ -48,33 +48,55 @@ export function isNewerVersion(remote: string, current: string): boolean {
  * Can be overridden via env SAKURA_UPDATE_URL.
  * Owners can host a simple version.json file on GitHub (raw.githubusercontent.com) or any HTTPS server.
  */
-const DEFAULT_UPDATE_URL =
-  process.env.SAKURA_UPDATE_URL ||
-  "https://raw.githubusercontent.com/SakuraLauncher/releases/main/version.json";
+/**
+ * URL for version check.
+ * Checks the official GitHub Releases endpoint for avtotronix/sakura-launcher.
+ */
+const GITHUB_API_URL = "https://api.github.com/repos/avtotronix/sakura-launcher/releases/latest";
 
 let lastResult: UpdateCheckResult | null = null;
 let updateTimer: NodeJS.Timeout | null = null;
 
-export async function checkUpdate(url = DEFAULT_UPDATE_URL): Promise<UpdateCheckResult> {
+export async function checkUpdate(): Promise<UpdateCheckResult> {
   const current = app.getVersion();
   try {
-    const data = await getJson<RemoteVersionInfo>(url);
-    if (!data || !data.version) {
-      throw new Error("Неверный формат ответа сервера обновлений");
+    const data = await getJson<any>(GITHUB_API_URL, {
+      headers: {
+        "User-Agent": "SakuraLauncher",
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+
+    if (!data || !data.tag_name) {
+      throw new Error("Неверный ответ GitHub API");
     }
 
-    const hasUpdate = isNewerVersion(data.version, current);
+    const latestVer = String(data.tag_name).replace(/^v/i, "").trim();
+    const hasUpdate = isNewerVersion(latestVer, current);
+
+    // Look for installer asset or portable asset
+    let downloadUrl = data.html_url;
+    if (Array.isArray(data.assets)) {
+      const installer = data.assets.find((a: any) =>
+        a.name && a.name.toLowerCase().includes("installer") && a.name.endsWith(".exe")
+      );
+      if (installer && installer.browser_download_url) {
+        downloadUrl = installer.browser_download_url;
+      }
+    }
+
     lastResult = {
       hasUpdate,
       currentVersion: current,
-      latestVersion: data.version,
-      title: data.title || `Версия ${data.version}`,
-      changelog: data.changelog || "Улучшения стабильности и исправления ошибок.",
-      downloadUrl: data.downloadUrl || "https://github.com/",
-      mandatory: Boolean(data.mandatory),
+      latestVersion: latestVer,
+      title: data.name || `Обновление v${latestVer}`,
+      changelog: data.body || "Улучшения стабильности и исправления ошибок.",
+      downloadUrl: downloadUrl || "https://github.com/avtotronix/sakura-launcher/releases/latest",
+      mandatory: false,
     };
     return lastResult;
   } catch (err: any) {
+    console.warn("[updater] Check failed:", err.message || err);
     return {
       hasUpdate: false,
       currentVersion: current,

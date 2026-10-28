@@ -187,6 +187,17 @@ if (window.sakura && window.sakura.onLauncherEvent) {
       box.scrollTop = box.scrollHeight;
     }
   });
+  window.sakura.onLauncherEvent('closed', (data) => {
+    busy = false;
+    window.upd();
+    const code = data ? data.code : 0;
+    if (code !== 0) {
+      toast(`Игра закрылась с кодом ${code}. Подробности во вкладке «Логи».`);
+      if ($('#st')) $('#st').textContent = `Ошибка игры (код ${code})`;
+    } else {
+      if ($('#st')) $('#st').textContent = 'Игра завершена';
+    }
+  });
 }
 
 setTimeout(() => {
