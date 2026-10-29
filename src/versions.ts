@@ -126,7 +126,7 @@ export async function build(): Promise<Matrix> {
 
   if (quiltLoaders.status === "fulfilled" && Array.isArray(quiltLoaders.value)) {
     const qVersions = quiltLoaders.value.map((l: any) => l.version);
-    const stableQuilt = qVersions[0] || "0.26.0";
+    const stableQuilt = qVersions[0] || "0.31.0-beta.4";
     for (const r of releases) {
       const parts = r.split(".").map(Number);
       if (parts[0] >= 25 || (parts[0] === 1 && parts[1] >= 14)) {

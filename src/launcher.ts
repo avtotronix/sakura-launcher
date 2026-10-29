@@ -18,6 +18,524 @@ function send(wc: WebContents, ch: string, data: unknown) {
   if (!wc.isDestroyed()) wc.send(ch, data);
 }
 
+// ─── MCLC Handler & Launcher Patch (fixes EMFILE hang on assets, 26.x version parsing, and modern Forge/NeoForge/Fabric/Quilt) ───
+let mclcPatched = false;
+function patchMclc() {
+  if (mclcPatched) return;
+  mclcPatched = true;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Handler = require("minecraft-launcher-core/components/handler");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const MCLCore = require("minecraft-launcher-core/components/launcher");
+
+    Handler.prototype.downloadAsync = async function (
+      url: string,
+      directory: string,
+      name: string,
+      retry: boolean,
+      type: string
+    ) {
+      if (!url) return { failed: false, asset: null };
+      fs.mkdirSync(directory, { recursive: true });
+      const dest = path.join(directory, name);
+      try {
+        await download(url, dest, (cur, tot) => {
+          this.client.emit("download-status", { name, type, current: cur, total: tot });
+        });
+        this.client.emit("download", name);
+        return { failed: false, asset: null };
+      } catch (err: any) {
+        this.client.emit("debug", `[MCLC]: Failed to download ${url} -> ${dest}: ${err?.message || err}`);
+        if (retry) {
+          try {
+            await download(url, dest);
+            this.client.emit("download", name);
+            return { failed: false, asset: null };
+          } catch {}
+        }
+        return { failed: true, asset: null };
+      }
+    };
+
+    Handler.prototype.getVersion = async function () {
+      const versionJsonPath =
+        this.options.overrides.versionJson ||
+        path.join(this.options.directory, `${this.options.version.number}.json`);
+      if (fs.existsSync(versionJsonPath)) {
+        try {
+          this.version = JSON.parse(fs.readFileSync(versionJsonPath, "utf8"));
+          return this.version;
+        } catch {}
+      }
+      const cacheDir = this.options.cache ? `${this.options.cache}/json` : `${this.options.root}/cache/json`;
+      const cachedVerPath = path.join(cacheDir, `${this.options.version.number}.json`);
+      if (fs.existsSync(cachedVerPath)) {
+        try {
+          this.version = JSON.parse(fs.readFileSync(cachedVerPath, "utf8"));
+          fs.mkdirSync(path.dirname(versionJsonPath), { recursive: true });
+          fs.writeFileSync(versionJsonPath, JSON.stringify(this.version, null, 2), "utf8");
+          return this.version;
+        } catch {}
+      }
+
+      const manifestUrl = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+      const parsed = await getJson<any>(manifestUrl);
+      fs.mkdirSync(cacheDir, { recursive: true });
+      try {
+        fs.writeFileSync(path.join(cacheDir, "version_manifest.json"), JSON.stringify(parsed), "utf8");
+      } catch {}
+      const desired = (parsed.versions || []).find((v: any) => v.id === this.options.version.number);
+      if (!desired) {
+        throw new Error(`Версия ${this.options.version.number} не найдена в манифесте Mojang`);
+      }
+      this.version = await getJson<any>(desired.url);
+      try {
+        fs.writeFileSync(cachedVerPath, JSON.stringify(this.version, null, 2), "utf8");
+      } catch {}
+      try {
+        fs.mkdirSync(path.dirname(versionJsonPath), { recursive: true });
+        fs.writeFileSync(versionJsonPath, JSON.stringify(this.version, null, 2), "utf8");
+      } catch {}
+      return this.version;
+    };
+
+    Handler.prototype.getJar = async function () {
+      const baseVerDir = path.join(this.options.root, "versions", this.options.version.number);
+      fs.mkdirSync(baseVerDir, { recursive: true });
+      const targetJar = this.options.mcPath || path.join(baseVerDir, `${this.options.version.number}.jar`);
+      if (!fs.existsSync(targetJar) || fs.statSync(targetJar).size === 0) {
+        await this.downloadAsync(
+          this.version.downloads.client.url,
+          path.dirname(targetJar),
+          path.basename(targetJar),
+          true,
+          "version-jar"
+        );
+      }
+      const verJsonFile = path.join(baseVerDir, `${this.options.version.number}.json`);
+      if (!fs.existsSync(verJsonFile)) {
+        fs.writeFileSync(verJsonFile, JSON.stringify(this.version, null, 2), "utf8");
+      }
+      return this.client.emit("debug", "[MCLC]: Downloaded version jar and wrote version json");
+    };
+
+    Handler.prototype.parseRule = function (lib: any) {
+      const osName = this.getOS(); // 'windows' | 'osx' | 'linux'
+      const nameStr = String(lib?.name || "");
+      // Filter architecture-mismatched or OS-mismatched native classifier jars
+      if (process.arch === "x64" && (nameStr.endsWith("-arm64") || nameStr.endsWith("-aarch_64") || nameStr.endsWith("-x86"))) {
+        return true; // skip
+      }
+      if (osName === "windows" && (nameStr.includes("natives-linux") || nameStr.includes("natives-macos") || nameStr.includes("natives-osx") || nameStr.includes("linux-x86") || nameStr.includes("linux-aarch") || nameStr.includes("osx-"))) {
+        return true; // skip
+      }
+      if (!lib.rules || !Array.isArray(lib.rules) || lib.rules.length === 0) {
+        return false; // include
+      }
+      let allowed = lib.rules[0].action !== "allow";
+      for (const rule of lib.rules) {
+        let matches = true;
+        if (rule.os) {
+          if (rule.os.name && rule.os.name !== osName) matches = false;
+          if (rule.os.arch) {
+            const sysArch = process.arch === "ia32" ? "x86" : process.arch;
+            if (rule.os.arch !== sysArch) matches = false;
+          }
+        }
+        if (matches) {
+          allowed = rule.action === "allow";
+        }
+      }
+      return !allowed; // MCLC convention: true means skip library
+    };
+
+    Handler.prototype.getNatives = async function () {
+      const nativeDirectory = path.resolve(
+        this.options.overrides.natives || path.join(this.options.root, "natives", this.version.id)
+      );
+      const vParts = String(this.version.id || "")
+        .split(".")
+        .map((n: string) => parseInt(n, 10));
+      if (vParts[0] >= 25 || (vParts[0] === 1 && vParts[1] >= 19)) {
+        for (const sub of ["", "java", "jna", "lwjgl", "netty"]) {
+          fs.mkdirSync(path.join(nativeDirectory, sub), { recursive: true });
+        }
+        return nativeDirectory;
+      }
+      if (!fs.existsSync(nativeDirectory) || !fs.readdirSync(nativeDirectory).length) {
+        fs.mkdirSync(nativeDirectory, { recursive: true });
+        const natives: any[] = [];
+        for (const lib of this.version.libraries || []) {
+          if (!lib?.downloads?.classifiers) continue;
+          if (this.parseRule(lib)) continue;
+          const native =
+            this.getOS() === "osx"
+              ? lib.downloads.classifiers["natives-osx"] || lib.downloads.classifiers["natives-macos"]
+              : lib.downloads.classifiers[`natives-${this.getOS()}`];
+          if (native) natives.push(native);
+        }
+        this.client.emit("progress", { type: "natives", task: 0, total: natives.length });
+        let done = 0;
+        for (const native of natives) {
+          const name = native.path.split("/").pop();
+          await this.downloadAsync(native.url, nativeDirectory, name, true, "natives");
+          try {
+            new AdmZip(path.join(nativeDirectory, name)).extractAllTo(nativeDirectory, true);
+          } catch {}
+          try {
+            fs.unlinkSync(path.join(nativeDirectory, name));
+          } catch {}
+          done++;
+          this.client.emit("progress", { type: "natives", task: done, total: natives.length });
+        }
+      }
+      return nativeDirectory;
+    };
+
+    Handler.prototype.isModernForge = function (json: any) {
+      if (!json?.inheritsFrom) return false;
+      const p = String(json.inheritsFrom)
+        .split(".")
+        .map((n: string) => parseInt(n, 10));
+      if (p[0] >= 25) return true;
+      return (
+        p[1] >= 12 &&
+        !(json.inheritsFrom === "1.12.2" && json.id.split(".")[json.id.split(".").length - 1] === "2847")
+      );
+    };
+
+    Handler.prototype.downloadToDirectory = async function (
+      directory: string,
+      libraries: any[],
+      eventName: string
+    ) {
+      const libs: string[] = [];
+      const toDownload: Array<{ url: string; jarPath: string; name: string; fullPath: string }> = [];
+      const validLibs = (libraries || []).filter((l) => l && !this.parseRule(l));
+
+      for (const library of validLibs) {
+        const lib = String(library.name || "").split(":");
+        let jarPath: string;
+        let name: string;
+        if (library.downloads?.artifact?.path) {
+          const parts = library.downloads.artifact.path.split("/");
+          name = parts[parts.length - 1];
+          jarPath = path.join(directory, parts.slice(0, -1).join("/"));
+        } else {
+          name = `${lib[1]}-${lib[2]}${lib[3] ? "-" + lib[3] : ""}.jar`;
+          jarPath = path.join(directory, `${lib[0].replace(/\./g, "/")}/${lib[1]}/${lib[2]}`);
+        }
+        const fullPath = path.join(jarPath, name);
+        libs.push(fullPath);
+
+        let existsOk = false;
+        try {
+          if (fs.existsSync(fullPath)) {
+            const st = fs.statSync(fullPath);
+            if (st.size > 0) existsOk = true;
+          }
+        } catch {}
+
+        if (!existsOk) {
+          let url = "";
+          if (library.url) {
+            const base = library.url.endsWith("/") ? library.url : library.url + "/";
+            url = `${base}${lib[0].replace(/\./g, "/")}/${lib[1]}/${lib[2]}/${name}`;
+          } else if (library.downloads?.artifact?.url) {
+            url = library.downloads.artifact.url;
+          }
+          if (url) {
+            toDownload.push({ url, jarPath, name, fullPath });
+          }
+        }
+      }
+
+      const total = validLibs.length;
+      let done = total - toDownload.length;
+      this.client.emit("progress", { type: eventName, task: done, total });
+
+      if (toDownload.length > 0) {
+        let idx = 0;
+        const concurrency = Math.min(12, toDownload.length);
+        const workers = Array.from({ length: concurrency }, async () => {
+          while (true) {
+            const cur = idx++;
+            if (cur >= toDownload.length) break;
+            const item = toDownload[cur];
+            await this.downloadAsync(item.url, item.jarPath, item.name, true, eventName);
+            done++;
+            this.client.emit("progress", { type: eventName, task: done, total });
+          }
+        });
+        await Promise.all(workers);
+      }
+
+      return libs.filter((p) => fs.existsSync(p));
+    };
+
+    Handler.prototype.getClasses = async function (classJson: any) {
+      let libs: string[] = [];
+      const libraryDirectory = path.resolve(
+        this.options.overrides.libraryRoot || path.join(this.options.root, "libraries")
+      );
+      const libKey = (name: string) => {
+        const p = String(name || "").split(":");
+        return p.length >= 4 ? `${p[0]}:${p[1]}:${p[3]}` : `${p[0]}:${p[1]}`;
+      };
+
+      const customKeys = new Set<string>();
+      if (classJson) {
+        if (classJson.mavenFiles) {
+          await this.downloadToDirectory(libraryDirectory, classJson.mavenFiles, "classes-maven-custom");
+        }
+        for (const l of classJson.libraries || []) {
+          if (l?.name) customKeys.add(libKey(l.name));
+        }
+        libs = await this.downloadToDirectory(libraryDirectory, classJson.libraries || [], "classes-custom");
+      }
+
+      const parsed = (this.version.libraries || []).filter((lib: any) => {
+        if (!lib.downloads?.artifact || this.parseRule(lib)) return false;
+        if (customKeys.has(libKey(lib.name))) return false;
+        return true;
+      });
+
+      libs = libs.concat(await this.downloadToDirectory(libraryDirectory, parsed, "classes"));
+      this.client.emit("debug", "[MCLC]: Collected class paths");
+      return [...new Set(libs)];
+    };
+
+    Handler.prototype.getAssets = async function () {
+      const assetDirectory = path.resolve(
+        this.options.overrides.assetRoot || path.join(this.options.root, "assets")
+      );
+      const realAssetId = String(
+        this.version.assetIndex?.id || this.version.assets || this.options.version.number
+      );
+      const mclcAssetId = String(
+        this.options.overrides.assetIndex || this.options.version.custom || this.options.version.number
+      );
+      const indexesDir = path.join(assetDirectory, "indexes");
+      fs.mkdirSync(indexesDir, { recursive: true });
+
+      const realIdxPath = path.join(indexesDir, `${realAssetId}.json`);
+      const mclcIdxPath = path.join(indexesDir, `${mclcAssetId}.json`);
+      const numIdxPath = path.join(indexesDir, `${this.options.version.number}.json`);
+
+      if (!fs.existsSync(realIdxPath)) {
+        if (fs.existsSync(numIdxPath)) {
+          try { fs.copyFileSync(numIdxPath, realIdxPath); } catch {}
+        } else if (fs.existsSync(mclcIdxPath)) {
+          try { fs.copyFileSync(mclcIdxPath, realIdxPath); } catch {}
+        } else if (this.version.assetIndex?.url) {
+          await this.downloadAsync(this.version.assetIndex.url, indexesDir, `${realAssetId}.json`, true, "asset-json");
+        }
+      }
+      if (fs.existsSync(realIdxPath)) {
+        for (const target of [mclcIdxPath, numIdxPath]) {
+          if (target !== realIdxPath && !fs.existsSync(target)) {
+            try { fs.copyFileSync(realIdxPath, target); } catch {}
+          }
+        }
+      }
+
+      const indexSource = fs.existsSync(realIdxPath) ? realIdxPath : mclcIdxPath;
+      const index = JSON.parse(fs.readFileSync(indexSource, "utf8"));
+      const objects = index.objects || {};
+      const keys = Object.keys(objects);
+      const total = keys.length;
+
+      const missing: Array<{ hash: string; subhash: string; subAsset: string }> = [];
+      for (const assetKey of keys) {
+        const obj = objects[assetKey];
+        const hash: string = obj.hash;
+        const subhash = hash.substring(0, 2);
+        const subAsset = path.join(assetDirectory, "objects", subhash);
+        const filePath = path.join(subAsset, hash);
+        let ok = false;
+        try {
+          if (fs.existsSync(filePath)) {
+            const st = fs.statSync(filePath);
+            if (obj.size ? st.size === obj.size : st.size > 0) ok = true;
+          }
+        } catch {}
+        if (!ok) {
+          missing.push({ hash, subhash, subAsset });
+        }
+      }
+
+      let done = total - missing.length;
+      this.client.emit("progress", { type: "assets", task: done, total });
+
+      if (missing.length > 0) {
+        let idx = 0;
+        const concurrency = Math.min(16, missing.length);
+        const resourceBase = this.options.overrides?.url?.resource || "https://resources.download.minecraft.net";
+        const workers = Array.from({ length: concurrency }, async () => {
+          while (true) {
+            const cur = idx++;
+            if (cur >= missing.length) break;
+            const item = missing[cur];
+            await this.downloadAsync(
+              `${resourceBase}/${item.subhash}/${item.hash}`,
+              item.subAsset,
+              item.hash,
+              true,
+              "assets"
+            );
+            done++;
+            if (done % 10 === 0 || done === total) {
+              this.client.emit("progress", { type: "assets", task: done, total });
+            }
+          }
+        });
+        await Promise.all(workers);
+      }
+
+      this.client.emit("progress", { type: "assets", task: total, total });
+
+      if (this.isLegacy()) {
+        const legacyDirectory = path.join(this.options.root, "resources");
+        let legacyDone = 0;
+        for (const assetKey of keys) {
+          const hash = objects[assetKey].hash;
+          const subhash = hash.substring(0, 2);
+          const srcFile = path.join(assetDirectory, "objects", subhash, hash);
+          const dstFile = path.join(legacyDirectory, assetKey);
+          if (!fs.existsSync(dstFile) && fs.existsSync(srcFile)) {
+            fs.mkdirSync(path.dirname(dstFile), { recursive: true });
+            try { fs.copyFileSync(srcFile, dstFile); } catch {}
+          }
+          legacyDone++;
+          if (legacyDone % 50 === 0 || legacyDone === total) {
+            this.client.emit("progress", { type: "assets-copy", task: legacyDone, total });
+          }
+        }
+      }
+
+      this.client.emit("debug", "[MCLC]: Downloaded assets");
+    };
+
+    // Patch MCLCore.prototype.launch so modern Forge/NeoForge don't duplicate vanilla jar on -cp and 26.x doesn't trigger 1.12 log4j check
+    MCLCore.prototype.launch = async function (options: any) {
+      try {
+        this.options = { ...options };
+        this.options.root = path.resolve(this.options.root);
+        this.options.overrides = {
+          detached: true,
+          ...this.options.overrides,
+          url: {
+            meta: "https://piston-meta.mojang.com",
+            resource: "https://resources.download.minecraft.net",
+            mavenForge: "https://files.minecraftforge.net/maven/",
+            defaultRepoForge: "https://libraries.minecraft.net/",
+            fallbackMaven: "https://search.maven.org/remotecontent?filepath=",
+            ...(this.options.overrides ? this.options.overrides.url : undefined),
+          },
+          fw: {
+            baseUrl: "https://github.com/ZekerZhayard/ForgeWrapper/releases/download/",
+            version: "1.6.0",
+            sh1: "035a51fe6439792a61507630d89382f621da0f1f",
+            size: 28679,
+            ...(this.options.overrides ? this.options.overrides.fw : undefined),
+          },
+        };
+
+        this.handler = new Handler(this);
+        this.printVersion();
+
+        const java = await this.handler.checkJava(this.options.javaPath || "java");
+        if (!java.run) {
+          this.emit("debug", `[MCLC]: Couldn't start Minecraft due to: ${java.message}`);
+          this.emit("close", 1);
+          return null;
+        }
+
+        this.createRootDirectory();
+        this.createGameDirectory();
+        await this.extractPackage();
+
+        const directory =
+          this.options.overrides.directory ||
+          path.join(this.options.root, "versions", this.options.version.number);
+        this.options.directory = directory;
+
+        const versionFile = await this.handler.getVersion();
+        const mcPath =
+          this.options.overrides.minecraftJar ||
+          path.join(directory, `${this.options.version.number}.jar`);
+        this.options.mcPath = mcPath;
+        const nativePath = await this.handler.getNatives();
+
+        if (!fs.existsSync(mcPath) || fs.statSync(mcPath).size === 0) {
+          this.emit("debug", "[MCLC]: Attempting to download Minecraft version jar");
+          await this.handler.getJar();
+        }
+
+        const modifyJson = await this.getModifyJson();
+        const args: string[] = [];
+
+        let jvm: string[] = [
+          "-XX:-UseAdaptiveSizePolicy",
+          "-XX:-OmitStackTraceInFastThrow",
+          "-Dfml.ignorePatchDiscrepancies=true",
+          "-Dfml.ignoreInvalidMinecraftCertificates=true",
+          `-Djava.library.path=${nativePath}`,
+          `-Xmx${this.handler.getMemory()[0]}`,
+          `-Xms${this.handler.getMemory()[1]}`,
+        ];
+        if (this.handler.getOS() === "osx") {
+          const vParts = String(versionFile.id || "").split(".").map(Number);
+          if (vParts[0] >= 25 || vParts[1] > 12) jvm.push(await this.handler.getJVM());
+        } else {
+          jvm.push(await this.handler.getJVM());
+        }
+
+        if (this.options.customArgs) jvm = jvm.concat(this.options.customArgs);
+        if (this.options.overrides.logj4ConfigurationFile) {
+          jvm.push(`-Dlog4j.configurationFile=${path.resolve(this.options.overrides.logj4ConfigurationFile)}`);
+        }
+
+        const classes: string[] =
+          this.options.overrides.classes || this.handler.cleanUp(await this.handler.getClasses(modifyJson));
+        const separator = this.handler.getOS() === "windows" ? ";" : ":";
+        this.emit("debug", `[MCLC]: Using ${separator} to separate class paths`);
+        const file = modifyJson || versionFile;
+
+        // Modern Forge / NeoForge provide their own patched client jar inside libraries; do not append unpatched mcPath
+        const skipVanillaJar = Boolean(this.options.overrides.skipVanillaJarInCp);
+        const jar = skipVanillaJar
+          ? ""
+          : fs.existsSync(mcPath)
+          ? `${separator}${mcPath}`
+          : `${separator}${path.join(directory, `${this.options.version.number}.jar`)}`;
+        const classPaths = [
+          "-cp",
+          `${this.options.forge ? this.options.forge + separator : ""}${classes.join(separator)}${jar}`,
+          file.mainClass,
+        ];
+
+        this.emit("debug", "[MCLC]: Attempting to download assets");
+        await this.handler.getAssets();
+
+        const launchOptions = await this.handler.getLaunchOptions(modifyJson);
+        const launchArguments = args.concat(jvm, classPaths, launchOptions);
+        this.emit("arguments", launchArguments);
+        this.emit("debug", `[MCLC]: Launching with arguments ${launchArguments.join(" ")}`);
+
+        return this.startMinecraft(launchArguments);
+      } catch (e: any) {
+        this.emit("debug", `[MCLC]: Failed to start due to ${e?.stack || e}, closing...`);
+        return null;
+      }
+    };
+  } catch (err) {
+    console.warn("[launcher] Could not apply MCLC patch:", err);
+  }
+}
+patchMclc();
+
 // ─── installed marker ────────────────────────────────────────────────────────
 const markerFile = (root: string) => path.join(root, "sakura-installed.json");
 export function readInstalled(root: string): string[] {
@@ -833,6 +1351,98 @@ async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, frie
   send(wc, "game:started", { pid: proc.pid });
 }
 
+async function ensureVanillaBase(root: string, mcVersion: string, wc: WebContents): Promise<any> {
+  const verDir = path.join(root, "versions", mcVersion);
+  fs.mkdirSync(verDir, { recursive: true });
+  const verJsonPath = path.join(verDir, `${mcVersion}.json`);
+  const verJarPath = path.join(verDir, `${mcVersion}.jar`);
+  const cachedPath = path.join(root, "cache", "json", `${mcVersion}.json`);
+
+  let verData: any = null;
+  if (fs.existsSync(cachedPath)) {
+    try {
+      const c = JSON.parse(fs.readFileSync(cachedPath, "utf8"));
+      if (c?.downloads?.client?.url) {
+        verData = c;
+        fs.writeFileSync(verJsonPath, JSON.stringify(c, null, 2), "utf8");
+      }
+    } catch {}
+  }
+  if (!verData && fs.existsSync(verJsonPath)) {
+    try {
+      const c = JSON.parse(fs.readFileSync(verJsonPath, "utf8"));
+      if (c?.downloads?.client?.url) verData = c;
+    } catch {}
+  }
+  if (!verData) {
+    send(wc, "game:progress", { stage: `Получаем манифест Minecraft ${mcVersion}…`, pct: 5 });
+    const man = await getJson<any>("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json");
+    const entry = (man.versions || []).find((v: any) => v.id === mcVersion);
+    if (!entry) throw new Error(`Версия Minecraft ${mcVersion} не найдена в манифесте Mojang`);
+    verData = await getJson<any>(entry.url);
+    fs.mkdirSync(path.dirname(cachedPath), { recursive: true });
+    try { fs.writeFileSync(cachedPath, JSON.stringify(verData, null, 2), "utf8"); } catch {}
+    fs.writeFileSync(verJsonPath, JSON.stringify(verData, null, 2), "utf8");
+  }
+
+  if (!fs.existsSync(verJarPath) || fs.statSync(verJarPath).size === 0) {
+    const clientUrl = verData?.downloads?.client?.url;
+    if (clientUrl) {
+      send(wc, "game:progress", { stage: `Скачиваем Minecraft ${mcVersion}.jar…`, pct: 10 });
+      await download(clientUrl, verJarPath, (d, t) => {
+        if (t > 0) {
+          send(wc, "game:progress", {
+            stage: `Скачиваем Minecraft ${mcVersion}.jar…`,
+            pct: Math.min(99, Math.round((d / t) * 100)),
+          });
+        }
+      });
+    }
+  }
+  return verData;
+}
+
+function runForgeOrNeoInstaller(javaPath: string, installerJar: string, root: string, wc: WebContents, label: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const javaDir = path.dirname(javaPath);
+    const cliJava = path.join(javaDir, process.platform === "win32" ? "java.exe" : "java");
+    const exe = fs.existsSync(cliJava) ? cliJava : javaPath;
+
+    const profilesPath = path.join(root, "launcher_profiles.json");
+    if (!fs.existsSync(profilesPath)) {
+      fs.writeFileSync(profilesPath, JSON.stringify({ profiles: {} }, null, 2), "utf8");
+    }
+
+    const p = cp.spawn(exe, ["-jar", installerJar, "--installClient", root], {
+      cwd: root,
+      windowsHide: true,
+    });
+    let pct = 15;
+    const onChunk = (buf: Buffer) => {
+      const text = buf.toString("utf8");
+      send(wc, "game:log", `[${label}] ${text}`);
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) continue;
+        if (line.includes("Downloading library") || line.includes("Considering library")) {
+          pct = Math.min(70, pct + 1);
+          send(wc, "game:progress", { stage: `Установка ${label}: библиотеки…`, pct });
+        } else if (line.includes("Processor:") || line.includes("Patching ") || line.includes("PROCESS_MINECRAFT_JAR")) {
+          pct = Math.max(75, Math.min(95, pct + 2));
+          send(wc, "game:progress", { stage: `Установка ${label}: патчинг клиента…`, pct });
+        }
+      }
+    };
+    p.stdout?.on("data", onChunk);
+    p.stderr?.on("data", onChunk);
+    p.on("error", reject);
+    p.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Установщик ${label} завершился с кодом ${code}`));
+    });
+  });
+}
+
 async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSystem?: any) {
   if (req.loader === "Horizon") {
     return launchHorizon(req, root, wc, friendsSystem);
@@ -845,7 +1455,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     lv = matrix.loaders[req.loader]?.[req.version] || "";
     if (!lv) {
       if (req.loader === "Fabric") lv = "0.20.1";
-      else if (req.loader === "Quilt") lv = "0.26.0";
+      else if (req.loader === "Quilt") lv = "0.31.0-beta.4";
       else if (req.loader === "Forge") lv = req.version.startsWith("26.") ? "66.1.0" : "47.4.28";
       else if (req.loader === "NeoForge") lv = req.version.startsWith("26.") ? "26.3.0.99" : "21.1.265";
       else throw new Error(`Для ${req.version} нет ${req.loader}`);
@@ -853,13 +1463,24 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
   }
 
   const javaPath = await ensureJava(root, await requiredJava(req.version), wc);
+  const vanillaData = await ensureVanillaBase(root, req.version, wc);
+  const vanillaDir = path.join(root, "versions", req.version);
+  const realAssetId = String(vanillaData?.assetIndex?.id || vanillaData?.assets || req.version);
+
   const opts: any = {
     root,
     authorization: auth.mclc,
     javaPath,
     version: { number: req.version, type: "release" },
     memory: { max: `${req.ram}G`, min: "1G" },
-    overrides: { detached: true, maxSockets: 8 },
+    overrides: {
+      detached: true,
+      maxSockets: 12,
+      directory: vanillaDir,
+      minecraftJar: path.join(vanillaDir, `${req.version}.jar`),
+      versionJson: path.join(vanillaDir, `${req.version}.json`),
+      assetIndex: realAssetId,
+    },
     customArgs: [] as string[],
   };
 
@@ -878,6 +1499,17 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     if (!opts.customArgs.some((a: string) => a.startsWith(key))) {
       opts.customArgs.push(flag);
     }
+  }
+
+  // Required Java 25 / Minecraft 26.x native access & stack shadow flags
+  const mcMajor = Number(req.version.split(".")[0]);
+  if (mcMajor >= 25) {
+    opts.customArgs.push(
+      "-XX:StackShadowPages=32",
+      "--enable-native-access=ALL-UNNAMED",
+      "--add-exports",
+      "java.base/jdk.internal.misc=ALL-UNNAMED"
+    );
   }
 
   if (req.packId) {
@@ -928,22 +1560,73 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
           : `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(req.version)}/${encodeURIComponent(lv)}/profile/json`;
         const prof = await getJson<any>(metaUrl);
         fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, prof.id + ".json"), JSON.stringify(prof));
+        fs.writeFileSync(path.join(dir, prof.id + ".json"), JSON.stringify(prof, null, 2), "utf8");
         opts.version.custom = prof.id;
       }
     } else {
       const isNeo = req.loader === "NeoForge";
       const full = isNeo ? lv : `${req.version}-${lv}`;
-      const legacy = !isNeo && Number(req.version.split(".")[1]) < 13;
+      const vParts = req.version.split(".").map(Number);
+      const legacy = !isNeo && vParts[0] === 1 && vParts[1] < 13;
       const kind = legacy ? "universal" : "installer";
       const url = isNeo
         ? `https://maven.neoforged.net/releases/net/neoforged/neoforge/${lv}/neoforge-${lv}-installer.jar`
         : `https://maven.minecraftforge.net/net/minecraftforge/forge/${full}/forge-${full}-${kind}.jar`;
       const jar = path.join(root, "installers", path.basename(new URL(url).pathname));
-      if (!fs.existsSync(jar)) {
-        await download(url, jar, (d, t) => t && send(wc, "game:progress", { stage: `Скачиваем ${req.loader}`, pct: Math.round((d / t) * 100) }));
+      if (!fs.existsSync(jar) || fs.statSync(jar).size === 0) {
+        await download(url, jar, (d, t) =>
+          t && send(wc, "game:progress", { stage: `Скачиваем ${req.loader}`, pct: Math.round((d / t) * 100) })
+        );
       }
-      opts.forge = jar;
+
+      if (legacy) {
+        opts.forge = jar;
+      } else {
+        let profId = isNeo ? `neoforge-${lv}` : `${req.version}-forge-${lv}`;
+        try {
+          const z = new AdmZip(jar);
+          const vEntry = z.getEntry("version.json");
+          if (vEntry) {
+            const parsedV = JSON.parse(vEntry.getData().toString("utf8"));
+            if (parsedV?.id) profId = parsedV.id;
+          }
+        } catch {}
+
+        const profJsonPath = path.join(root, "versions", profId, `${profId}.json`);
+        const needsInstall = !fs.existsSync(profJsonPath) || (
+          isNeo
+            ? !fs.existsSync(path.join(root, "libraries", "net", "neoforged", "minecraft-client-patched", lv, `minecraft-client-patched-${lv}.jar`)) &&
+              !fs.existsSync(path.join(root, "libraries", "net", "neoforged", "neoforge", lv, `neoforge-${lv}-client.jar`))
+            : !fs.existsSync(path.join(root, "libraries", "net", "minecraftforge", "forge", full, `forge-${full}-client.jar`))
+        );
+
+        if (needsInstall) {
+          send(wc, "game:progress", { stage: `Устанавливаем ${req.loader} ${lv}…`, pct: 15 });
+          await runForgeOrNeoInstaller(javaPath, jar, root, wc, `${req.loader} ${lv}`);
+        }
+
+        if (fs.existsSync(profJsonPath)) {
+          opts.version.custom = profId;
+          opts.overrides.skipVanillaJarInCp = true;
+          try {
+            const profJson = JSON.parse(fs.readFileSync(profJsonPath, "utf8"));
+            const libDir = path.resolve(root, "libraries");
+            const sep = process.platform === "win32" ? ";" : ":";
+            const rawJvm = profJson?.arguments?.jvm || [];
+            for (const item of rawJvm) {
+              if (typeof item === "string") {
+                const resolved = item
+                  .replace(/\$\{library_directory\}/g, libDir)
+                  .replace(/\$\{classpath_separator\}/g, sep)
+                  .replace(/\$\{version_name\}/g, profId);
+                opts.customArgs.push(resolved);
+              }
+            }
+          } catch {}
+        } else {
+          opts.forge = jar;
+        }
+      }
     }
   }
 
