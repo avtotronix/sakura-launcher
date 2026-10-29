@@ -610,49 +610,71 @@ function portJavaModJarToHorizon(
   }
 }
 
-function syncHorizonMods(targetGameDir: string, root: string, wc: WebContents) {
-  const horizonModsDir = path.join(targetGameDir, "horizon-mods");
+function ensureCleanRootLaunch(root: string) {
+  const dirsToClean = [root];
+  if (fs.existsSync("D:\\.sakura") && path.resolve("D:\\.sakura") !== path.resolve(root)) {
+    dirsToClean.push("D:\\.sakura");
+  }
+
+  for (const baseDir of dirsToClean) {
+    // 1. Move any stray mods/resourcepacks/shaderpacks from root into Library so clean launches have 0 mod assets
+    for (const folder of ["mods", "resourcepacks", "shaderpacks"]) {
+      const rootFolder = path.join(baseDir, folder);
+      const libFolder = path.join(baseDir, "Library", folder);
+      if (fs.existsSync(rootFolder)) {
+        fs.mkdirSync(libFolder, { recursive: true });
+        try {
+          for (const f of fs.readdirSync(rootFolder)) {
+            if (folder === "resourcepacks" && f === "SakuraSkin.zip") continue;
+            const src = path.join(rootFolder, f);
+            try {
+              if (!fs.statSync(src).isDirectory()) {
+                const cleanName = f.replace(/\.disabled$/i, "");
+                const dst = path.join(libFolder, cleanName);
+                if (!fs.existsSync(dst)) {
+                  try { fs.copyFileSync(src, dst); } catch {}
+                }
+                try { fs.unlinkSync(src); } catch {}
+              } else {
+                try { fs.rmSync(src, { recursive: true, force: true }); } catch {}
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+    }
+
+    // 2. Remove root/horizon-mods and root/horizon-mods.txt so Horizon clean launch has 0 mods
+    const rootHorizonMods = path.join(baseDir, "horizon-mods");
+    if (fs.existsSync(rootHorizonMods)) {
+      try { fs.rmSync(rootHorizonMods, { recursive: true, force: true }); } catch {}
+    }
+    const rootHorizonTxt = path.join(baseDir, "horizon-mods.txt");
+    if (fs.existsSync(rootHorizonTxt)) {
+      try { fs.unlinkSync(rootHorizonTxt); } catch {}
+    }
+  }
+}
+
+function syncHorizonMods(instanceDir: string, wc: WebContents) {
+  const horizonModsDir = path.join(instanceDir, "horizon-mods");
+  // Recreate horizon-mods cleanly from the instance's active mods
+  if (fs.existsSync(horizonModsDir)) {
+    try { fs.rmSync(horizonModsDir, { recursive: true, force: true }); } catch {}
+  }
   fs.mkdirSync(horizonModsDir, { recursive: true });
 
-  const srcDirs: string[] = [path.join(targetGameDir, "mods")];
-  if (targetGameDir === root) {
-    srcDirs.push(path.join(root, "Library", "mods"));
-    if (fs.existsSync("D:\\.sakura")) {
-      srcDirs.push(path.join("D:\\.sakura", "mods"));
-      srcDirs.push(path.join("D:\\.sakura", "Library", "mods"));
-    }
-  }
-
-  // Also sync resourcepacks from Library when running root profile
-  if (targetGameDir === root) {
-    const rpLib = path.join(root, "Library", "resourcepacks");
-    const rpDest = path.join(targetGameDir, "resourcepacks");
-    if (fs.existsSync(rpLib)) {
-      fs.mkdirSync(rpDest, { recursive: true });
-      try {
-        for (const f of fs.readdirSync(rpLib)) {
-          if (f.endsWith(".zip")) {
-            const dst = path.join(rpDest, f);
-            if (!fs.existsSync(dst)) {
-              try { fs.copyFileSync(path.join(rpLib, f), dst); } catch {}
-            }
-          }
-        }
-      } catch {}
-    }
-  }
-
+  const modsDir = path.join(instanceDir, "mods");
   const enabledModIds = new Set<string>();
   const claimedNamespaces = new Set<string>();
 
-  for (const dir of srcDirs) {
-    if (!fs.existsSync(dir)) continue;
+  if (fs.existsSync(modsDir)) {
     let files: string[] = [];
-    try { files = fs.readdirSync(dir); } catch { continue; }
+    try { files = fs.readdirSync(modsDir); } catch {}
 
     for (const file of files) {
       if (file.endsWith(".disabled") || file.endsWith(".part") || file.endsWith(".tmp")) continue;
-      const fullPath = path.join(dir, file);
+      const fullPath = path.join(modsDir, file);
       try {
         if (fs.statSync(fullPath).isDirectory()) continue;
       } catch {
@@ -662,7 +684,7 @@ function syncHorizonMods(targetGameDir: string, root: string, wc: WebContents) {
       if (file.toLowerCase().endsWith(".hmod")) {
         const destHmod = path.join(horizonModsDir, file);
         try {
-          if (fullPath !== destHmod) fs.copyFileSync(fullPath, destHmod);
+          fs.copyFileSync(fullPath, destHmod);
           let hmodId = file.replace(/-[0-9].*\.hmod$/i, "").replace(/\.hmod$/i, "");
           try {
             const z = new AdmZip(destHmod);
@@ -686,78 +708,14 @@ function syncHorizonMods(targetGameDir: string, root: string, wc: WebContents) {
     }
   }
 
-  // Also check any existing .hmod or folders in horizon-mods
-  try {
-    for (const item of fs.readdirSync(horizonModsDir)) {
-      if (item.toLowerCase().endsWith(".hmod")) {
-        let hmodId = item.replace(/-[0-9].*\.hmod$/i, "").replace(/\.hmod$/i, "");
-        try {
-          const z = new AdmZip(path.join(horizonModsDir, item));
-          const tEntry = z.getEntry("horizon-mod.toml");
-          if (tEntry) {
-            const txt = tEntry.getData().toString("utf8");
-            const m = txt.match(/^\s*id\s*=\s*"([^"]+)"/m);
-            if (m) hmodId = m[1];
-          }
-        } catch {}
-        enabledModIds.add(hmodId);
-      }
-    }
-  } catch {}
-
-  const modsTxtPath = path.join(targetGameDir, "horizon-mods.txt");
-  const existingLines: string[] = [];
-  const seenKeys = new Set<string>();
-
-  if (fs.existsSync(modsTxtPath)) {
+  const modsTxtPath = path.join(instanceDir, "horizon-mods.txt");
+  if (enabledModIds.size > 0) {
+    const lines = [...enabledModIds].map((id) => `mod.${id}:true`);
     try {
-      const content = fs.readFileSync(modsTxtPath, "utf8");
-      for (const line of content.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        const idx = trimmed.indexOf(":");
-        if (idx > 0) {
-          const k = trimmed.slice(0, idx).trim();
-          seenKeys.add(k);
-        }
-        existingLines.push(trimmed);
-      }
+      fs.writeFileSync(modsTxtPath, lines.join("\n") + "\n", "utf8");
     } catch {}
-  }
-
-  for (const id of enabledModIds) {
-    const key = `mod.${id}`;
-    if (!seenKeys.has(key)) {
-      existingLines.push(`${key}:true`);
-      seenKeys.add(key);
-    }
-  }
-
-  if (existingLines.length > 0) {
-    try {
-      fs.writeFileSync(modsTxtPath, existingLines.join("\n") + "\n", "utf8");
-    } catch {}
-  }
-}
-
-function syncRootLibraryMods(root: string) {
-  for (const folder of ["mods", "resourcepacks", "shaderpacks"]) {
-    const libDir = path.join(root, "Library", folder);
-    const destDir = path.join(root, folder);
-    if (!fs.existsSync(libDir)) continue;
-    fs.mkdirSync(destDir, { recursive: true });
-    try {
-      for (const f of fs.readdirSync(libDir)) {
-        if (f.endsWith(".part") || f.endsWith(".tmp") || f.endsWith(".hmod")) continue;
-        const src = path.join(libDir, f);
-        const dst = path.join(destDir, f);
-        if (!fs.existsSync(dst) && !fs.existsSync(dst + ".disabled")) {
-          try {
-            if (!fs.statSync(src).isDirectory()) fs.copyFileSync(src, dst);
-          } catch {}
-        }
-      }
-    } catch {}
+  } else if (fs.existsSync(modsTxtPath)) {
+    try { fs.unlinkSync(modsTxtPath); } catch {}
   }
 }
 
@@ -834,7 +792,11 @@ async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, frie
   if (req.skinData) {
     applyPlayerSkin(targetGameDir, req.skinData, !!req.skinSlim);
   }
-  syncHorizonMods(targetGameDir, root, wc);
+  if (req.packId) {
+    syncHorizonMods(targetGameDir, wc);
+  } else {
+    ensureCleanRootLaunch(root);
+  }
 
   const playerName = req.nick || auth.name || "Player";
   const clientExe = path.join(horizonDir, "horizon-client.exe");
@@ -944,7 +906,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
     opts.overrides.gameDirectory = targetGameDir;
   } else {
-    syncRootLibraryMods(root);
+    ensureCleanRootLaunch(root);
   }
   if (req.skinData) {
     applyPlayerSkin(targetGameDir, req.skinData, !!req.skinSlim);

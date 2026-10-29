@@ -461,9 +461,7 @@ function registerIPC(): void {
       const masterPath = path.join(libDir, safeFile);
       await download(String(url), masterPath);
 
-      // 2. If target instance specified and not _library, copy into instance.
-      //    If _library, also sync into the root game directory (and D:\.sakura if present)
-      //    so playing directly from the main Play screen loads the installed mods/packs!
+      // 2. If target instance specified and not _library, copy into instance
       let finalPath = masterPath;
       if (packId && packId !== "_library") {
         const instDir = path.join(getGameDataDir(), "instances", path.basename(String(packId)), targetFolder);
@@ -471,16 +469,6 @@ function registerIPC(): void {
         const instPath = path.join(instDir, safeFile);
         fs.copyFileSync(masterPath, instPath);
         finalPath = instPath;
-      } else {
-        const rootTargetDir = path.join(getGameDataDir(), targetFolder);
-        if (!fs.existsSync(rootTargetDir)) fs.mkdirSync(rootTargetDir, { recursive: true });
-        const rootTargetPath = path.join(rootTargetDir, safeFile);
-        try { fs.copyFileSync(masterPath, rootTargetPath); } catch {}
-        if (fs.existsSync("D:\\.sakura")) {
-          const dTargetDir = path.join("D:\\.sakura", targetFolder);
-          if (!fs.existsSync(dTargetDir)) fs.mkdirSync(dTargetDir, { recursive: true });
-          try { fs.copyFileSync(masterPath, path.join(dTargetDir, safeFile)); } catch {}
-        }
       }
 
       return { ok: true, path: finalPath };

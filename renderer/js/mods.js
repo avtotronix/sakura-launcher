@@ -79,7 +79,7 @@ window.updateTargetInstanceDropdown = function() {
   if (!sel) return;
   const cur = sel.value || '_library';
   const packs = (ST.packs || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.v || '1.21.1')})</option>`).join('');
-  sel.innerHTML = '<option value="_library">В основную игру и библиотеку (Library)</option>' + packs;
+  sel.innerHTML = '<option value="_library">В библиотеку (Library)</option>' + packs;
   if ([...sel.options].some(o => o.value === cur)) {
     sel.value = cur;
   }
@@ -1057,7 +1057,7 @@ window.openDownloadChoiceDialog = function(item) {
   // Populate pks with Library + all available user instances
   const pks = document.getElementById('pks');
   if (pks) {
-    let opts = '<option value="_library">📁 В основную игру и библиотеку (Library)</option>';
+    let opts = '<option value="_library">📁 В общую библиотеку (Library)</option>';
     if (ST.packs && ST.packs.length > 0) {
       opts += '<optgroup label="Ваши сборки">';
       for (const p of ST.packs) {
