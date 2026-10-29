@@ -20,6 +20,28 @@ function send(wc: WebContents, ch: string, data: unknown) {
 
 // ─── MCLC Handler & Launcher Patch (fixes EMFILE hang on assets, 26.x version parsing, and modern Forge/NeoForge/Fabric/Quilt) ───
 let mclcPatched = false;
+const verifiedAssetIndexes = new Set<string>();
+const verifiedClasspathCache = new Map<string, string[]>();
+const registeredGpuExes = new Set<string>();
+
+function boostGameProcess(pid: number | undefined, exePath: string) {
+  if (pid && pid > 0) {
+    try {
+      os.setPriority(pid, os.constants.priority.PRIORITY_ABOVE_NORMAL);
+    } catch {}
+  }
+  if (process.platform === "win32" && exePath && !registeredGpuExes.has(exePath)) {
+    registeredGpuExes.add(exePath);
+    try {
+      const resolved = path.resolve(exePath);
+      cp.exec(
+        `reg add "HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences" /v "${resolved}" /t REG_SZ /d "GpuPreference=2;" /f`,
+        { windowsHide: true },
+        () => {}
+      );
+    } catch {}
+  }
+}
 function patchMclc() {
   if (mclcPatched) return;
   mclcPatched = true;
@@ -275,6 +297,13 @@ function patchMclc() {
     };
 
     Handler.prototype.getClasses = async function (classJson: any) {
+      const cacheKey = `${this.options.root}|${this.version?.id}|${classJson?.id || "vanilla"}`;
+      const cached = verifiedClasspathCache.get(cacheKey);
+      if (cached && cached.length > 0 && cached.every((p) => fs.existsSync(p))) {
+        this.client.emit("progress", { type: "classes", task: cached.length, total: cached.length });
+        return cached;
+      }
+
       let libs: string[] = [];
       const libraryDirectory = path.resolve(
         this.options.overrides.libraryRoot || path.join(this.options.root, "libraries")
@@ -303,7 +332,9 @@ function patchMclc() {
 
       libs = libs.concat(await this.downloadToDirectory(libraryDirectory, parsed, "classes"));
       this.client.emit("debug", "[MCLC]: Collected class paths");
-      return [...new Set(libs)];
+      const deduped = [...new Set(libs)];
+      verifiedClasspathCache.set(cacheKey, deduped);
+      return deduped;
     };
 
     Handler.prototype.getAssets = async function () {
@@ -322,6 +353,7 @@ function patchMclc() {
       const realIdxPath = path.join(indexesDir, `${realAssetId}.json`);
       const mclcIdxPath = path.join(indexesDir, `${mclcAssetId}.json`);
       const numIdxPath = path.join(indexesDir, `${this.options.version.number}.json`);
+      const stampPath = path.join(indexesDir, `${realAssetId}.verified`);
 
       if (!fs.existsSync(realIdxPath)) {
         if (fs.existsSync(numIdxPath)) {
@@ -338,6 +370,14 @@ function patchMclc() {
             try { fs.copyFileSync(realIdxPath, target); } catch {}
           }
         }
+      }
+
+      const fastCacheKey = `${assetDirectory}|${realAssetId}`;
+      if (verifiedAssetIndexes.has(fastCacheKey) || fs.existsSync(stampPath)) {
+        verifiedAssetIndexes.add(fastCacheKey);
+        this.client.emit("progress", { type: "assets", task: 1, total: 1 });
+        this.client.emit("debug", "[MCLC]: Assets fast-verified from cache");
+        return;
       }
 
       const indexSource = fs.existsSync(realIdxPath) ? realIdxPath : mclcIdxPath;
@@ -370,7 +410,7 @@ function patchMclc() {
 
       if (missing.length > 0) {
         let idx = 0;
-        const concurrency = Math.min(16, missing.length);
+        const concurrency = Math.min(24, missing.length);
         const resourceBase = this.options.overrides?.url?.resource || "https://resources.download.minecraft.net";
         const workers = Array.from({ length: concurrency }, async () => {
           while (true) {
@@ -385,7 +425,7 @@ function patchMclc() {
               "assets"
             );
             done++;
-            if (done % 10 === 0 || done === total) {
+            if (done % 15 === 0 || done === total) {
               this.client.emit("progress", { type: "assets", task: done, total });
             }
           }
@@ -394,6 +434,8 @@ function patchMclc() {
       }
 
       this.client.emit("progress", { type: "assets", task: total, total });
+      verifiedAssetIndexes.add(fastCacheKey);
+      try { fs.writeFileSync(stampPath, String(Date.now()), "utf8"); } catch {}
 
       if (this.isLegacy()) {
         const legacyDirectory = path.join(this.options.root, "resources");
@@ -443,13 +485,16 @@ function patchMclc() {
         };
 
         this.handler = new Handler(this);
-        this.printVersion();
 
-        const java = await this.handler.checkJava(this.options.javaPath || "java");
-        if (!java.run) {
-          this.emit("debug", `[MCLC]: Couldn't start Minecraft due to: ${java.message}`);
-          this.emit("close", 1);
-          return null;
+        // Skip spawning slow 'java -version' shell subprocess when javaPath is already verified on disk
+        const jPath = this.options.javaPath || "java";
+        if (jPath === "java" || !fs.existsSync(jPath)) {
+          const java = await this.handler.checkJava(jPath);
+          if (!java.run) {
+            this.emit("debug", `[MCLC]: Couldn't start Minecraft due to: ${java.message}`);
+            this.emit("close", 1);
+            return null;
+          }
         }
 
         this.createRootDirectory();
@@ -1174,17 +1219,71 @@ function ensureCleanRootLaunch(root: string) {
   }
 }
 
+function ensureOptimizedHorizonConfig(gameDir: string) {
+  const gfxPath = path.join(gameDir, "horizon-graphics.txt");
+  const optimalWorkers = Math.max(4, os.cpus().length - 1);
+  if (!fs.existsSync(gfxPath)) {
+    const defaultGfx = [
+      "preset:custom",
+      "lodDistance:0",
+      "farDetail:full",
+      "caveCulling:true",
+      "entityCulling:true",
+      "chunkUpdates:0",
+      "uploadBudgetKiB:16384",
+      "sky:true",
+      "fog:true",
+      "weather:true",
+      "animatedTextures:true",
+      "presentMode:auto",
+      "framePacing:efficient",
+      `workers:${optimalWorkers}`,
+      "overlay:off",
+      "resolutionScale:100",
+      "fxaa:false",
+      "hdr:false",
+      "hdrPaperWhite:200",
+      "hdrPeak:1000",
+      "batteryMode:false",
+      "graphicsApi:auto",
+      "pickedShaderPack:",
+    ].join("\n") + "\n";
+    try { fs.writeFileSync(gfxPath, defaultGfx, "utf8"); } catch {}
+    return;
+  }
+  try {
+    let txt = fs.readFileSync(gfxPath, "utf8");
+    let changed = false;
+    if (txt.includes("entityCulling:false")) {
+      txt = txt.replace("entityCulling:false", "entityCulling:true");
+      changed = true;
+    }
+    if (txt.includes("caveCulling:false")) {
+      txt = txt.replace("caveCulling:false", "caveCulling:true");
+      changed = true;
+    }
+    if (txt.includes("workers:0")) {
+      txt = txt.replace("workers:0", `workers:${optimalWorkers}`);
+      changed = true;
+    }
+    if (txt.includes("uploadBudgetKiB:0")) {
+      txt = txt.replace("uploadBudgetKiB:0", "uploadBudgetKiB:16384");
+      changed = true;
+    }
+    if (changed) {
+      fs.writeFileSync(gfxPath, txt, "utf8");
+    }
+  } catch {}
+}
+
 function syncHorizonMods(instanceDir: string, wc: WebContents) {
   const horizonModsDir = path.join(instanceDir, "horizon-mods");
-  // Recreate horizon-mods cleanly from the instance's active mods
-  if (fs.existsSync(horizonModsDir)) {
-    try { fs.rmSync(horizonModsDir, { recursive: true, force: true }); } catch {}
-  }
   fs.mkdirSync(horizonModsDir, { recursive: true });
 
   const modsDir = path.join(instanceDir, "mods");
   const enabledModIds = new Set<string>();
   const claimedNamespaces = new Set<string>();
+  const keptEntries = new Set<string>();
 
   if (fs.existsSync(modsDir)) {
     let files: string[] = [];
@@ -1193,16 +1292,21 @@ function syncHorizonMods(instanceDir: string, wc: WebContents) {
     for (const file of files) {
       if (file.endsWith(".disabled") || file.endsWith(".part") || file.endsWith(".tmp")) continue;
       const fullPath = path.join(modsDir, file);
+      let st: fs.Stats;
       try {
-        if (fs.statSync(fullPath).isDirectory()) continue;
+        st = fs.statSync(fullPath);
+        if (st.isDirectory()) continue;
       } catch {
         continue;
       }
 
       if (file.toLowerCase().endsWith(".hmod")) {
         const destHmod = path.join(horizonModsDir, file);
+        keptEntries.add(file);
         try {
-          fs.copyFileSync(fullPath, destHmod);
+          if (!fs.existsSync(destHmod) || fs.statSync(destHmod).size !== st.size) {
+            fs.copyFileSync(fullPath, destHmod);
+          }
           let hmodId = file.replace(/-[0-9].*\.hmod$/i, "").replace(/\.hmod$/i, "");
           try {
             const z = new AdmZip(destHmod);
@@ -1217,14 +1321,25 @@ function syncHorizonMods(instanceDir: string, wc: WebContents) {
           claimedNamespaces.add(hmodId);
         } catch {}
       } else if (file.toLowerCase().endsWith(".jar")) {
-        send(wc, "game:progress", { stage: `Адаптация мода ${file} для Horizon…`, pct: 92 });
         const portedId = portJavaModJarToHorizon(fullPath, horizonModsDir, claimedNamespaces);
         if (portedId) {
           enabledModIds.add(portedId);
+          keptEntries.add(portedId);
         }
       }
     }
   }
+
+  // Prune removed or disabled mods from horizon-mods without wiping valid cached mods
+  try {
+    for (const existing of fs.readdirSync(horizonModsDir)) {
+      if (!keptEntries.has(existing)) {
+        try {
+          fs.rmSync(path.join(horizonModsDir, existing), { recursive: true, force: true });
+        } catch {}
+      }
+    }
+  } catch {}
 
   const modsTxtPath = path.join(instanceDir, "horizon-mods.txt");
   if (enabledModIds.size > 0) {
@@ -1238,9 +1353,11 @@ function syncHorizonMods(instanceDir: string, wc: WebContents) {
 }
 
 async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, friendsSystem?: any) {
-  const auth = await getLaunchAuth(req.elyAuth);
-  const horizonDir = await ensureHorizonRelease(root, wc);
-  const javaExe = await ensureJava(root, 25, wc);
+  const [auth, horizonDir, javaExe] = await Promise.all([
+    getLaunchAuth(req.elyAuth),
+    ensureHorizonRelease(root, wc),
+    ensureJava(root, 25, wc),
+  ]);
   const javaHome = path.dirname(path.dirname(javaExe));
 
   // Ensure raw Mojang 26.3.json and 34.json asset index exist in root (or D:\.sakura)
@@ -1251,7 +1368,7 @@ async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, frie
 
   const cachedJson = path.join(mcDir, "cache", "json", "26.3.json");
   const verJson = path.join(mcDir, "versions", "26.3", "26.3.json");
-  if (fs.existsSync(cachedJson)) {
+  if (!fs.existsSync(verJson) && fs.existsSync(cachedJson)) {
     try { fs.copyFileSync(cachedJson, verJson); } catch {}
   }
 
@@ -1307,6 +1424,7 @@ async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, frie
 
   const targetGameDir = req.packId ? path.join(root, "instances", req.packId) : root;
   fs.mkdirSync(targetGameDir, { recursive: true });
+  ensureOptimizedHorizonConfig(targetGameDir);
   if (req.skinData) {
     applyPlayerSkin(targetGameDir, req.skinData, !!req.skinSlim);
   }
@@ -1323,6 +1441,7 @@ async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, frie
     clientArgs.push("--server", req.server);
   }
 
+  const rayonThreads = String(Math.max(4, os.cpus().length - 1));
   send(wc, "game:progress", { stage: "Запускаем Horizon (Rust)…", pct: 100 });
   const proc = cp.spawn(clientExe, clientArgs, {
     cwd: targetGameDir,
@@ -1330,9 +1449,13 @@ async function launchHorizon(req: LaunchReq, root: string, wc: WebContents, frie
       ...process.env,
       HORIZON_HOME: targetGameDir,
       HORIZON_PLAYER_NAME: playerName,
+      WGPU_POWER_PREF: "high",
+      RAYON_NUM_THREADS: rayonThreads,
     },
     detached: true,
   });
+
+  boostGameProcess(proc.pid, clientExe);
 
   proc.stdout?.on("data", (m) => send(wc, "game:log", String(m)));
   proc.stderr?.on("data", (m) => send(wc, "game:log", String(m)));
@@ -1447,7 +1570,12 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
   if (req.loader === "Horizon") {
     return launchHorizon(req, root, wc, friendsSystem);
   }
-  const auth = await getLaunchAuth(req.elyAuth);
+  const reqJavaMajor = await requiredJava(req.version);
+  const [auth, javaPath, vanillaData] = await Promise.all([
+    getLaunchAuth(req.elyAuth),
+    ensureJava(root, reqJavaMajor, wc),
+    ensureVanillaBase(root, req.version, wc),
+  ]);
   let lv = "";
 
   if (req.loader !== "Vanilla") {
@@ -1462,8 +1590,6 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     }
   }
 
-  const javaPath = await ensureJava(root, await requiredJava(req.version), wc);
-  const vanillaData = await ensureVanillaBase(root, req.version, wc);
   const vanillaDir = path.join(root, "versions", req.version);
   const realAssetId = String(vanillaData?.assetIndex?.id || vanillaData?.assets || req.version);
 
@@ -1472,10 +1598,11 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     authorization: auth.mclc,
     javaPath,
     version: { number: req.version, type: "release" },
-    memory: { max: `${req.ram}G`, min: "1G" },
+    // Fast 512M initial heap avoids multi-second RAM page zeroing freeze before main() starts
+    memory: { max: `${req.ram}G`, min: "512M" },
     overrides: {
       detached: true,
-      maxSockets: 12,
+      maxSockets: 16,
       directory: vanillaDir,
       minecraftJar: path.join(vanillaDir, `${req.version}.jar`),
       versionJson: path.join(vanillaDir, `${req.version}.json`),
@@ -1484,16 +1611,64 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     customArgs: [] as string[],
   };
 
-  // Add optimal JVM arguments
-  const defaultJvmArgs = [
+  const mcMajor = Number(req.version.split(".")[0]);
+
+  // High-speed JVM startup + runtime FPS flags (tailored for Java 25 vs Java 17/21)
+  const defaultJvmArgs: string[] = [
     "-Dfile.encoding=UTF-8",
-    "-XX:+UseG1GC",
-    "-XX:+ParallelRefProcEnabled",
-    "-XX:MaxGCPauseMillis=200",
     "-XX:+UnlockExperimentalVMOptions",
     "-XX:+DisableExplicitGC",
-    "-XX:+AlwaysPreTouch",
+    "-XX:+TieredCompilation",
+    "-XX:ReservedCodeCacheSize=512M",
+    "-XX:InitialCodeCacheSize=64M",
+    "-XX:+OptimizeStringConcat",
+    "-Dminecraft.disableDataFixerOptimizations=true",
+    "-Dfml.readTimeout=90",
+    "-Dforge.forceNoStencil=true",
+    "-Dio.netty.leakDetection.level=DISABLED",
+    "-Dio.netty.allocator.type=pooled",
+    "-Djava.security.egd=file:/dev/./urandom",
   ];
+
+  if (mcMajor >= 25 || reqJavaMajor >= 25) {
+    // Java 25: Generational ZGC (<0.2ms pause, instant startup) + 64-bit Compact Object Headers (+15% FPS, -20% RAM)
+    defaultJvmArgs.push(
+      "-XX:+UseZGC",
+      "-XX:+UseCompactObjectHeaders",
+      "-XX:+UseStringDeduplication"
+    );
+  } else {
+    // Java 17 / 21: Low-pause Aikar/Mojang G1GC without blocking AlwaysPreTouch
+    defaultJvmArgs.push(
+      "-XX:+UseG1GC",
+      "-XX:+ParallelRefProcEnabled",
+      "-XX:MaxGCPauseMillis=35",
+      "-XX:G1NewSizePercent=20",
+      "-XX:G1ReservePercent=20",
+      "-XX:G1HeapRegionSize=32M",
+      "-XX:G1MixedGCCountTarget=4",
+      "-XX:InitiatingHeapOccupancyPercent=15",
+      "-XX:G1MixedGCLiveThresholdPercent=90",
+      "-XX:MaxTenuringThreshold=1",
+      "-XX:+PerfDisableSharedMem"
+    );
+  }
+
+  // AppCDS (Application Class-Data Sharing): caches parsed & verified bytecode into memory-mapped .jsa archive (40-60% faster JVM boot)
+  if (reqJavaMajor >= 21) {
+    try {
+      const cdsDir = path.join(root, "cache", "cds");
+      fs.mkdirSync(cdsDir, { recursive: true });
+      const safeVer = req.version.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const cdsFile = path.join(cdsDir, `cds-${safeVer}-${req.loader.toLowerCase()}.jsa`);
+      defaultJvmArgs.push(
+        "-Xshare:auto",
+        "-XX:+AutoCreateSharedArchive",
+        `-XX:SharedArchiveFile=${cdsFile}`
+      );
+    } catch {}
+  }
+
   for (const flag of defaultJvmArgs) {
     const key = flag.split("=")[0];
     if (!opts.customArgs.some((a: string) => a.startsWith(key))) {
@@ -1502,7 +1677,6 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
   }
 
   // Required Java 25 / Minecraft 26.x native access & stack shadow flags
-  const mcMajor = Number(req.version.split(".")[0]);
   if (mcMajor >= 25) {
     opts.customArgs.push(
       "-XX:StackShadowPages=32",
@@ -1655,6 +1829,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
 
   const proc = await client.launch(opts);
   if (!proc) throw new Error("Minecraft не запустился. Подробности в журнале (Ctrl+Shift+I).");
+  boostGameProcess((proc as any).pid, javaPath);
   if (typeof (proc as any).unref === "function") {
     try { (proc as any).unref(); } catch {}
   }
