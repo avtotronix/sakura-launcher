@@ -1,3 +1,4 @@
+let closeTimer = null;
 /* ---- Play & Versions Logic ---- */
 const vs = $('#ver');
 let busy = false;
@@ -132,7 +133,7 @@ window.doLaunchGame = async function(e) {
     const res = await window.sakura.launchMinecraft({
       version: v,
       loader: l,
-      ram: ST.ram || 4,
+      ram: (ST.ram && Number(ST.ram) >= 1) ? Math.round(Number(ST.ram)) : 4,
       packId: packId,
       elyAuth: !!ST.elyAuth,
       skinData: ST.skinData || '',
@@ -146,9 +147,10 @@ window.doLaunchGame = async function(e) {
     if (res.ok) {
       toast("Игра запущена!");
       if (ST.cl) {
-        setTimeout(() => {
+        if (closeTimer) clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => {
           try { window.close(); } catch {}
-        }, 5000);
+        }, 6000);
       }
     } else {
       toast("Ошибка запуска: " + res.error);
@@ -197,6 +199,9 @@ if (window.sakura && window.sakura.onLauncherEvent) {
         line.style.color = '#ffd166';
       }
       box.appendChild(line);
+      while (box.childNodes.length > 2000) {
+        box.removeChild(box.firstChild);
+      }
       box.scrollTop = box.scrollHeight;
     }
   });
@@ -205,6 +210,7 @@ if (window.sakura && window.sakura.onLauncherEvent) {
     window.upd();
     const code = data ? data.code : 0;
     if (code !== 0) {
+      if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
       toast(`Игра закрылась с кодом ${code}. Подробности во вкладке «Логи».`);
       if ($('#st')) $('#st').textContent = `Ошибка игры (код ${code})`;
     } else {

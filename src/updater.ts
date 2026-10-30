@@ -60,12 +60,33 @@ let updateTimer: NodeJS.Timeout | null = null;
 export async function checkUpdate(): Promise<UpdateCheckResult> {
   const current = app.getVersion();
   try {
-    const data = await getJson<any>(GITHUB_API_URL, {
-      headers: {
-        "User-Agent": "SakuraLauncher",
-        Accept: "application/vnd.github.v3+json",
-      },
-    });
+    let data: any = null;
+    try {
+      data = await getJson<any>(GITHUB_API_URL, {
+        headers: {
+          "User-Agent": "SakuraLauncher",
+          Accept: "application/vnd.github.v3+json",
+        },
+      });
+    } catch (e: any) {
+      console.warn("[updater] GitHub API failed, trying raw package.json fallback:", e.message || e);
+      try {
+        const pkg = await getJson<any>("https://raw.githubusercontent.com/avtotronix/sakura-launcher/main/package.json", {
+          headers: { "User-Agent": "SakuraLauncher" },
+        });
+        if (pkg && pkg.version) {
+          data = {
+            tag_name: "v" + pkg.version,
+            html_url: "https://github.com/avtotronix/sakura-launcher/releases/latest",
+            name: "Sakura Launcher v" + pkg.version,
+            body: "Новая версия доступна для загрузки.",
+            assets: []
+          };
+        }
+      } catch (e2) {
+        throw e;
+      }
+    }
 
     if (!data || !data.tag_name) {
       throw new Error("Неверный ответ GitHub API");

@@ -494,68 +494,6 @@ if (document.getElementById('dlg_add_off')) document.getElementById('dlg_add_off
 if (document.getElementById('dlg_add_ms')) document.getElementById('dlg_add_ms').onclick = window.doAuthMs;
 if (document.getElementById('dlg_add_ely')) document.getElementById('dlg_add_ely').onclick = window.doAuthElyPrompt;
 
-window.doLaunchGame = async () => {
-  if (window.busy) return;
-  if (!window.ST_ACTIVE_ACC) {
-    toast("Пожалуйста, выберите аккаунт!");
-    return;
-  }
-  
-  const verParts = (document.getElementById('ver').value || "").split("|");
-  let v = verParts[0];
-  let ld = verParts[1] || 'vanilla';
-  let mods = undefined;
-  
-  const packId = document.getElementById('play_pack_sel')?.value;
-  if (packId) {
-    const pack = ST.packs.find(p => p.id === packId);
-    if (pack) {
-      v = pack.v;
-      ld = pack.l;
-      mods = pack.mods;
-    }
-  }
-
-  window.busy = true; window.mode = 'inst'; window.p = 0; window.target = 0;
-  
-  if (document.getElementById('ndlg')) document.getElementById('ndlg').showModal();
-  
-  window.sakura.onLauncherEvent('log', msg => console.log(msg));
-  window.sakura.onLauncherEvent('progress', prog => {
-    const pct = Math.min(100, Math.round((prog.task / prog.total) * 100)) || 0;
-    window.target = pct / 100;
-    if(document.getElementById('bi')) document.getElementById('bi').style.width = pct + '%';
-    if(document.getElementById('st')) document.getElementById('st').textContent = `Загрузка ${prog.type}... ${pct}%`;
-  });
-
-  if(document.getElementById('st')) document.getElementById('st').textContent = "Подготовка к запуску...";
-  if(document.getElementById('bi')) document.getElementById('bi').style.width = '0%';
-  
-  try {
-    const active = window.ST_ACCOUNTS.find(a => a.id === window.ST_ACTIVE_ACC);
-    const res = await window.sakura.launchMinecraft({
-      version: v,
-      loader: ld,
-      packId: packId,
-      authProfile: active,
-      ram: ST.ram
-    });
-    window.busy = false; window.upd();
-    if (document.getElementById('ndlg')) document.getElementById('ndlg').close();
-    
-    if (res.ok) {
-      toast("Игра запущена!");
-      if (ST.cl) { setTimeout(() => { try { window.close(); } catch {} }, 5000); }
-    } else {
-      toast("Ошибка запуска: " + res.error);
-    }
-  } catch(e) {
-    window.busy = false; window.upd();
-    if (document.getElementById('ndlg')) document.getElementById('ndlg').close();
-    toast("Системная ошибка: " + e.message);
-  }
-};
-
 let activePackId = null;
 
 document.getElementById('pack_tab_settings').onclick = (e) => {
@@ -718,7 +656,7 @@ window.checkForLauncherUpdate = async function() {
         window.showUpdateModal(res);
       } else {
         if (statusLbl) {
-          statusLbl.textContent = `У вас актуальная версия (v${res ? res.currentVersion : '0.1.7'})`;
+          statusLbl.textContent = `У вас актуальная версия (v${res ? res.currentVersion : '0.1.8'})`;
         }
         toast('У вас установлена последняя версия лаунчера!');
       }
@@ -740,6 +678,8 @@ if (window.sakura && window.sakura.getVersion) {
   window.sakura.getVersion().then((v) => {
     const lbl = document.getElementById('app_ver_txt');
     if (lbl) lbl.textContent = `Sakura Launcher v${v}`;
+    const logsUpdLbl = document.getElementById("logs_upd_status");
+    if (logsUpdLbl) logsUpdLbl.textContent = `Версия v${v}`;
   }).catch(() => {});
 }
 

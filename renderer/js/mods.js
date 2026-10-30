@@ -576,10 +576,10 @@ async function executeDownloadItem(item, target) {
       await window.syncDiskPacks();
       window.updateTargetInstanceDropdown();
     } else {
-      throw new Error('download failed');
+      throw new Error(res && res.error ? res.error : 'download failed');
     }
   } catch (err) {
-    toast(err.message === 'none' ? `Для ${v} и ${l} у «${t}» нет подходящего файла` : 'Ошибка загрузки файла.');
+    toast(err.message === 'none' ? `Для ${v} и ${l} у «${t}» нет подходящего файла` : `Ошибка загрузки файла: ${err.message || 'Сбой сети'}`);
     if (b) b.disabled = false;
   }
 }

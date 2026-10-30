@@ -1992,6 +1992,12 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
 
   const proc = await client.launch(opts);
   if (!proc) throw new Error("Minecraft не запустился. Подробности в журнале (Ctrl+Shift+I).");
+  if (proc && typeof (proc as any).on === "function") {
+    (proc as any).on("error", (err: any) => {
+      send(wc, "game:log", `[Process Error] ${err?.message || err}`);
+      send(wc, "game:closed", { code: -1 });
+    });
+  }
   boostGameProcess((proc as any).pid, javaPath);
   if (typeof (proc as any).unref === "function") {
     try { (proc as any).unref(); } catch {}
