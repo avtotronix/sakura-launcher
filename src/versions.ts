@@ -44,23 +44,44 @@ const FALLBACK_RELEASES = [
 let cache: Matrix | null = null;
 let inflight: Promise<Matrix> | null = null;
 
-const CACHE_FILE = path.join(__dirname, "..", "version.json");
-
-function readDiskCache(): Matrix | null {
+function getCachePaths(): { writable: string; bundled: string } {
+  let writable = path.join(__dirname, "..", "version.json");
+  const bundled = path.join(__dirname, "..", "version.json");
   try {
-    if (fs.existsSync(CACHE_FILE)) {
-      const data = JSON.parse(fs.readFileSync(CACHE_FILE, "utf8"));
-      if (data && Array.isArray(data.releases) && data.releases.length > 0) {
-        return data as Matrix;
-      }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { app } = require("electron");
+    if (app && typeof app.getPath === "function") {
+      writable = path.join(app.getPath("userData"), "version.json");
     }
   } catch {}
+  return { writable, bundled };
+}
+
+function readDiskCache(): Matrix | null {
+  const { writable, bundled } = getCachePaths();
+  for (const p of [writable, bundled]) {
+    try {
+      if (fs.existsSync(p)) {
+        const data = JSON.parse(fs.readFileSync(p, "utf8"));
+        if (data && Array.isArray(data.releases) && data.releases.length > 0) {
+          return data as Matrix;
+        }
+      }
+    } catch {}
+  }
   return null;
 }
 
+// Synchronously pre-warm cache on startup so getMatrix() returns in 0ms without disk I/O
+try {
+  cache = readDiskCache();
+} catch {}
+
 function writeDiskCache(m: Matrix): void {
   try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(m), "utf8");
+    const { writable } = getCachePaths();
+    fs.mkdirSync(path.dirname(writable), { recursive: true });
+    fs.writeFileSync(writable, JSON.stringify(m), "utf8");
   } catch {}
 }
 
@@ -203,8 +224,15 @@ export function installedCombos(root: string): string[] {
       if (!fs.existsSync(json)) continue;
       let m: RegExpMatchArray | null;
       if ((m = d.match(/^fabric-loader-[^-]+-(.+)$/))) out.push(`${m[1]}|Fabric`);
+      else if ((m = d.match(/^quilt-loader-[^-]+-(.+)$/))) out.push(`${m[1]}|Quilt`);
+      else if ((m = d.match(/^(.+)-forge-[^-]+$/))) out.push(`${m[1]}|Forge`);
+      else if ((m = d.match(/^neoforge-(.+)$/))) {
+        const mc = neoToMc(m[1]) || m[1];
+        out.push(`${mc}|NeoForge`);
+      }
       else if ((m = d.match(/^sakura-forge-(.+)$/))) out.push(`${m[1]}|Forge`);
       else if ((m = d.match(/^sakura-neoforge-(.+)$/))) out.push(`${m[1]}|NeoForge`);
+      else if (/^\d+\.\d+(\.\d+)?$/.test(d)) out.push(`${d}|Vanilla`);
     }
   } catch { /* no versions yet */ }
   try {

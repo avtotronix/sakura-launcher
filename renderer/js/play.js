@@ -116,6 +116,11 @@ window.doLaunchGame = async function(e) {
     v = parts[0];
     l = parts[1] || 'Vanilla';
   }
+
+  if (!v || v === 'undefined') {
+    toast('Выберите версию Minecraft');
+    return;
+  }
   
   // Set to installed
   installedVersions.add(`${v}|${l}`);
@@ -179,6 +184,9 @@ window.copyGameLogs = function() {
 };
 
 if (window.sakura && window.sakura.onLauncherEvent) {
+  window.sakura.onLauncherEvent('started', () => {
+    window.isGameRunning = true;
+  });
   window.sakura.onLauncherEvent('progress', (data) => {
     if (!data) return;
     const stage = data.stage || 'Загрузка...';
@@ -207,6 +215,7 @@ if (window.sakura && window.sakura.onLauncherEvent) {
   });
   window.sakura.onLauncherEvent('closed', (data) => {
     busy = false;
+    window.isGameRunning = false;
     window.upd();
     const code = data ? data.code : 0;
     if (code !== 0) {

@@ -254,10 +254,8 @@ function patchMclc() {
 
         let existsOk = false;
         try {
-          if (fs.existsSync(fullPath)) {
-            const st = fs.statSync(fullPath);
-            if (st.size > 0) existsOk = true;
-          }
+          const st = fs.statSync(fullPath);
+          if (st.size > 0) existsOk = true;
         } catch {}
 
         if (!existsOk) {
@@ -300,7 +298,7 @@ function patchMclc() {
     Handler.prototype.getClasses = async function (classJson: any) {
       const cacheKey = `${this.options.root}|${this.version?.id}|${classJson?.id || "vanilla"}`;
       const cached = verifiedClasspathCache.get(cacheKey);
-      if (cached && cached.length > 0 && cached.every((p) => fs.existsSync(p))) {
+      if (cached && cached.length > 0) {
         this.client.emit("progress", { type: "classes", task: cached.length, total: cached.length });
         return cached;
       }
@@ -767,7 +765,12 @@ async function ensureJava(root: string, major: number, wc: WebContents): Promise
 // ─── authlib-injector (Ely.by skins & server auth) ───────────────────────────
 async function ensureAuthlib(root: string): Promise<string> {
   const jar = path.join(root, "authlib-injector.jar");
-  if (fs.existsSync(jar)) return jar;
+  if (fs.existsSync(jar)) {
+    try {
+      if (fs.statSync(jar).size > 1000) return jar;
+    } catch {}
+    try { fs.unlinkSync(jar); } catch {}
+  }
   const meta = await getJson<any>("https://authlib-injector.yushi.moe/artifact/latest.json");
   await download(meta.download_url, jar);
   return jar;
@@ -1645,7 +1648,9 @@ async function ensureVanillaBase(root: string, mcVersion: string, wc: WebContent
       const c = JSON.parse(fs.readFileSync(cachedPath, "utf8"));
       if (c?.downloads?.client?.url) {
         verData = c;
-        fs.writeFileSync(verJsonPath, JSON.stringify(c, null, 2), "utf8");
+        if (!fs.existsSync(verJsonPath)) {
+          fs.writeFileSync(verJsonPath, JSON.stringify(c, null, 2), "utf8");
+        }
       }
     } catch {}
   }
@@ -1786,6 +1791,8 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     "-XX:ReservedCodeCacheSize=512M",
     "-XX:InitialCodeCacheSize=64M",
     "-XX:+OptimizeStringConcat",
+    "-XX:+TrustFinalNonStaticFields",
+    "-XX:+UseFastUnorderedTimeStamps",
     "-Dminecraft.disableDataFixerOptimizations=true",
     "-Dfml.readTimeout=90",
     "-Dforge.forceNoStencil=true",
@@ -1802,18 +1809,20 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
       "-XX:+UseStringDeduplication"
     );
   } else {
-    // Java 17 / 21: Low-pause Aikar/Mojang G1GC without blocking AlwaysPreTouch
+    // Java 17 / 21: Low-pause Aikar/Mojang G1GC with string deduplication & high chunk throughput
     defaultJvmArgs.push(
       "-XX:+UseG1GC",
       "-XX:+ParallelRefProcEnabled",
       "-XX:MaxGCPauseMillis=35",
       "-XX:G1NewSizePercent=20",
-      "-XX:G1ReservePercent=20",
+      "-XX:G1ReservePercent=15",
+      "-XX:SurvivorRatio=32",
       "-XX:G1HeapRegionSize=32M",
       "-XX:G1MixedGCCountTarget=4",
       "-XX:InitiatingHeapOccupancyPercent=15",
       "-XX:G1MixedGCLiveThresholdPercent=90",
       "-XX:MaxTenuringThreshold=1",
+      "-XX:+UseStringDeduplication",
       "-XX:+PerfDisableSharedMem"
     );
   }
@@ -1878,15 +1887,16 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
 
   if (req.server) {
     const parts = req.server.split(":");
-    opts.customArgs.push("--server", parts[0]);
-    if (parts[1]) opts.customArgs.push("--port", parts[1]);
+    if (!opts.customLaunchArgs) opts.customLaunchArgs = [];
+    opts.customLaunchArgs.push("--server", parts[0]);
+    if (parts[1]) opts.customLaunchArgs.push("--port", parts[1]);
   }
   const targetGameDir = req.packId ? path.join(root, "instances", req.packId) : root;
   if (req.packId) {
     const modsDir = path.join(targetGameDir, "mods");
     if (!fs.existsSync(modsDir)) fs.mkdirSync(modsDir, { recursive: true });
     opts.overrides.gameDirectory = targetGameDir;
-  } else {
+  } else if (req.loader === "Vanilla") {
     ensureCleanRootLaunch(root);
   }
   if (req.skinData) {
@@ -1967,9 +1977,21 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
           try {
             const profJson = JSON.parse(fs.readFileSync(profJsonPath, "utf8"));
             const libDir = path.resolve(root, "libraries");
+            const nativeDir = path.resolve(opts.overrides?.natives || path.join(root, "natives", req.version));
             const sep = process.platform === "win32" ? ";" : ":";
+            const currentOs = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "osx" : "linux";
             const rawJvm = profJson?.arguments?.jvm || [];
             for (const rawItem of rawJvm) {
+              if (rawItem && typeof rawItem === "object" && Array.isArray(rawItem.rules)) {
+                let allowed = false;
+                for (const r of rawItem.rules) {
+                  let match = true;
+                  if (r.os?.name && r.os.name !== currentOs) match = false;
+                  if (r.os?.arch && r.os.arch !== process.arch) match = false;
+                  if (match) allowed = r.action === "allow";
+                }
+                if (!allowed) continue;
+              }
               const vals: string[] = typeof rawItem === "string"
                 ? [rawItem]
                 : (Array.isArray(rawItem?.value) ? rawItem.value : (rawItem?.value ? [rawItem.value] : []));
@@ -1977,6 +1999,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
                 if (typeof item === "string") {
                   const resolved = item
                     .replace(/\$\{library_directory\}/g, libDir)
+                    .replace(/\$\{natives_directory\}/g, nativeDir)
                     .replace(/\$\{classpath_separator\}/g, sep)
                     .replace(/\$\{version_name\}/g, profId);
                   if (!opts.customArgs.includes(resolved)) {

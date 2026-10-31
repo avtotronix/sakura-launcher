@@ -14,9 +14,9 @@ if($('#game_h')) $('#game_h').oninput=e=>{ST.gameH=e.target.value;save()};
 if($('#game_fs')) $('#game_fs').onchange=e=>{ST.gameFs=e.target.checked;save()};
 if($('#showSnap')) $('#showSnap').onchange=e=>{ST.showSnap=e.target.checked;save();if(window.fetchVersions)window.fetchVersions()};
 if($('#showAlpha')) $('#showAlpha').onchange=e=>{ST.showAlpha=e.target.checked;save();if(window.fetchVersions)window.fetchVersions()};
-$('#ram').oninput=e=>{ST.ram=+e.target.value;$('#rv').textContent=ST.ram+' ГБ';save()};
-$('#java').onchange=e=>{ST.java=e.target.selectedIndex;save()};
-$('#dir').onchange=e=>{ST.dir=e.target.value;save()};
+if($('#ram')) $('#ram').oninput=e=>{ST.ram=+e.target.value;$('#rv').textContent=ST.ram+' ГБ';save()};
+if($('#java')) $('#java').onchange=e=>{ST.java=e.target.selectedIndex;save()};
+if($('#dir')) $('#dir').onchange=e=>{ST.dir=e.target.value;save()};
 window.browseDataDir = async function() {
   if (window.sakura && window.sakura.showOpenFile) {
     try {
@@ -38,13 +38,13 @@ window.browseDataDir = async function() {
     }
   }
 };
-$('#cl').onchange=e=>{ST.cl=e.target.checked;save()};
-$('#wd').oninput=e=>{S.wind=ST.wind=+e.target.value;save()};
-$('#pt').onchange=e=>{S.petals=ST.petals=e.target.checked;save()};
-$('#scn').onchange=e=>{setScene(e.target.value);$('#scn').value=ST.scene;save()};
-$('#qs').onchange=e=>{ST.q=e.target.value;document.documentElement.dataset.q=ST.q;if(scene&&scene.gl)scene.build();save()};
-$('#an').onchange=e=>{ST.anim=e.target.checked;rm=!ST.anim;save()};
-$('#phb').onclick=()=>$('#phf').click();
+if($('#cl')) $('#cl').onchange=e=>{ST.cl=e.target.checked;save()};
+if($('#wd')) $('#wd').oninput=e=>{S.wind=ST.wind=+e.target.value;save()};
+if($('#pt')) $('#pt').onchange=e=>{S.petals=ST.petals=e.target.checked;save()};
+if($('#scn')) $('#scn').onchange=e=>{setScene(e.target.value);$('#scn').value=ST.scene;save()};
+if($('#qs')) $('#qs').onchange=e=>{ST.q=e.target.value;document.documentElement.dataset.q=ST.q;if(scene&&scene.gl)scene.build();save()};
+if($('#an')) $('#an').onchange=e=>{ST.anim=e.target.checked;rm=!ST.anim;save()};
+if($('#phb')) $('#phb').onclick=()=>$('#phf').click();
 $('#phf').onchange = async e => {
   const f = e.target.files[0];
   if (!f) return;
@@ -104,9 +104,9 @@ $('#phf').onchange = async e => {
     }
   }
 };
-$('#phd').oninput=e=>{ST.phDim=+e.target.value;save();if(window.updateBgFilters)window.updateBgFilters()};
-$('#phbl').oninput=e=>{ST.phBlur=+e.target.value;save();if(window.updateBgFilters)window.updateBgFilters()};
-$('#gb').onclick=async()=>{ try { toast('Открываем браузер...'); const r=await window.sakura.accountsGoogle(); if(r.ok) { window.syncAccounts(r); toast('Google подключён'); } else toast('Ошибка: '+r.error); } catch(e){toast('Ошибка: '+e.message);} };
+if($('#phd')) $('#phd').oninput=e=>{ST.phDim=+e.target.value;save();if(window.updateBgFilters)window.updateBgFilters()};
+if($('#phbl')) $('#phbl').oninput=e=>{ST.phBlur=+e.target.value;save();if(window.updateBgFilters)window.updateBgFilters()};
+if($('#gb')) $('#gb').onclick=async()=>{ try { toast('Открываем браузер...'); const r=await window.sakura.accountsGoogle(); if(r.ok) { window.syncAccounts(r); toast('Google подключён'); } else toast('Ошибка: '+r.error); } catch(e){toast('Ошибка: '+e.message);} };
 
 const elyd=$('#elyp');
 /*
@@ -114,7 +114,7 @@ const elyd=$('#elyp');
   $('#eyn').value='';$('#eye').textContent='';$('#eya').hidden=false;$('#eyr').hidden=true;elyd.showModal();$('#eyn').focus();
 };
 $('#eyc').onclick=()=>elyd.close();
-*/ $('#eyk').onclick=(e)=>{ window.doAuthElyFinish(e); }; /*
+*/ if($('#eyk')) $('#eyk').onclick=(e)=>{ window.doAuthElyFinish(e); }; /*
   const v=$('#eyn').value.trim();
   if(!/^[\w.-]{2,32}$/.test(v)){$('#eye').textContent='Ник Ely.by: 2–32 символа, латиница, цифры, _ . -';return}
   $('#eya').hidden=true;$('#eyr').hidden=false;
@@ -656,7 +656,7 @@ window.checkForLauncherUpdate = async function() {
         window.showUpdateModal(res);
       } else {
         if (statusLbl) {
-          statusLbl.textContent = `У вас актуальная версия (v${res ? res.currentVersion : '0.1.9'})`;
+          statusLbl.textContent = `У вас актуальная версия (v${res ? res.currentVersion : '0.2.0'})`;
         }
         toast('У вас установлена последняя версия лаунчера!');
       }

@@ -103,8 +103,13 @@ let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>scene&&
 
 let lastD=0,dtAcc=0,dtN=0,gscale=.65;
 const FPS={auto:30,high:60,low:24};
+document.addEventListener('visibilitychange', () => { if (!document.hidden) lastD = performance.now(); });
 function frame(now){
   requestAnimationFrame(frame);
+  if (document.hidden || window.isGameRunning) {
+    lastD = now;
+    return;
+  }
   const qk=ST.q||'auto',iv=1000/FPS[qk];
   if(skinTick)skinTick(now);
   if(now-lastD<iv-2)return;

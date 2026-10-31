@@ -38,6 +38,13 @@ import { ServersCatalogManager, registerServersCatalogIPC } from "./serversCatal
 import { ContentManager, registerContentIPC } from "./contentManager";
 import { ModrinthProvider, registerModrinthIPC } from "./modrinthProvider";
 import { CurseForgeProvider, registerCurseForgeIPC } from "./curseforgeProvider";
+import { getMatrix } from "./versions";
+
+// Prevent second instances early before registering event listeners
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
 
 // Defer Discord RPC to background to avoid blocking launcher startup
 const clientId = '1326922240505184287';
@@ -162,6 +169,10 @@ app.commandLine.appendSwitch("enable-sandbox");
 app.commandLine.appendSwitch("disable-features", "OutOfBlinkCors"); // keep CORS
 // Prevent renderer from accessing powerful APIs
 app.commandLine.appendSwitch("disable-remote-fonts", "0");
+// Hardware acceleration & rendering performance flags
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("enable-zero-copy");
+app.commandLine.appendSwitch("ignore-gpu-blocklist");
 
 // ─── State persistence (via main — renderer never touches the FS) ────────────
 
@@ -234,6 +245,7 @@ function createWindow(): void {
       allowRunningInsecureContent: false, // ✅ No mixed content
       // ────────────────────────────────────────────────────────────────────
       preload: path.join(__dirname, "preload.js"),
+      v8CacheOptions: "code",
     },
   });
 
@@ -381,7 +393,7 @@ function registerIPC(): void {
     // Resolve to absolute path inside game data dir to prevent path traversal
     const gameDir = getGameDataDir();
     const resolved = path.resolve(gameDir, folderPath);
-    if (!resolved.startsWith(gameDir) && resolved !== gameDir) {
+    if (!resolved.startsWith(gameDir + path.sep) && resolved !== gameDir) {
       console.warn("[security] Path traversal attempt blocked:", folderPath);
       return;
     }
@@ -439,7 +451,7 @@ function registerIPC(): void {
     // Sanitize: allow subpaths, prevent directory traversal outside base
     const cleanSub = subFolder.replace(/\.\./g, "").replace(/^[/\\]+/, "");
     const target = path.join(base, cleanSub);
-    if (!target.startsWith(base)) return;
+    if (!target.startsWith(base + path.sep) && target !== base) return;
     try {
       if (!fs.existsSync(target)) fs.mkdirSync(target, { recursive: true });
     } catch { /* ignore */ }
@@ -526,6 +538,7 @@ function registerIPC(): void {
   registerAccountsIPC();
   registerLauncherIPC(getGameDataDir, () => friendsSystem);
   registerUpdaterIPC(() => mainWindow);
+  ipcMain.handle("versions:matrix", async () => { return await getMatrix(); });
 }
 
 // Block any IPC channels that are not in the allowlist
@@ -540,34 +553,27 @@ function blockUnknownIPC(): void {
 
 // ─── App lifecycle ───────────────────────────────────────────────────────────
 
-void app.whenReady().then(() => {
-  applyCSP();
-  registerIPC();
-  blockUnknownIPC();
-  createWindow();
-  setTimeout(() => startAutoUpdater(() => mainWindow), 5000);
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-import { getMatrix } from "./versions";
-ipcMain.handle("versions:matrix", async () => { return await getMatrix(); });
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
-
-// Prevent second instances
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  app.quit();
-} else {
+if (gotTheLock) {
   app.on("second-instance", () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
   });
+
+  void app.whenReady().then(() => {
+    applyCSP();
+    registerIPC();
+    blockUnknownIPC();
+    createWindow();
+    setTimeout(() => startAutoUpdater(() => mainWindow), 5000);
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
 }
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
