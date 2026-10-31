@@ -176,10 +176,11 @@ function patchMclc() {
       const nativeDirectory = path.resolve(
         this.options.overrides.natives || path.join(this.options.root, "natives", this.version.id)
       );
-      const vParts = String(this.version.id || "")
-        .split(".")
-        .map((n: string) => parseInt(n, 10));
-      if (vParts[0] >= 25 || (vParts[0] === 1 && vParts[1] >= 19)) {
+      const rawId = String(this.version.id || "");
+      const match = rawId.match(/(?:^|-)(\d+)\.(\d+)(?:\.(\d+))?/);
+      const major = match ? parseInt(match[1], 10) : 1;
+      const minor = match ? parseInt(match[2], 10) : 0;
+      if (major >= 25 || (major === 1 && minor >= 19)) {
         for (const sub of ["", "java", "jna", "lwjgl", "netty"]) {
           fs.mkdirSync(path.join(nativeDirectory, sub), { recursive: true });
         }
@@ -557,7 +558,7 @@ function patchMclc() {
           : `${separator}${path.join(directory, `${this.options.version.number}.jar`)}`;
         const classPaths = [
           "-cp",
-          `${this.options.forge ? this.options.forge + separator : ""}${classes.join(separator)}${jar}`,
+          `${this.options.forge ? this.options.forge + separator : ""}${classes.filter(Boolean).join(separator)}${jar}`,
           file.mainClass,
         ];
 
@@ -1817,19 +1818,30 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     );
   }
 
-  // AppCDS (Application Class-Data Sharing): caches parsed & verified bytecode into memory-mapped .jsa archive (40-60% faster JVM boot)
-  if (reqJavaMajor >= 21) {
+  // AppCDS (Application Class-Data Sharing): caches parsed & verified bytecode into memory-mapped .jsa archive.
+  // CRITICAL: AppCDS auto-dumping is ONLY safe for pure Vanilla!
+  // Mod loaders (Fabric, Quilt, Forge, NeoForge) use dynamic Mixin/ASM/ClassLoader transformations,
+  // signed JARs, and custom module layers that crash or corrupt when dumping CDS archives.
+  if (req.loader === "Vanilla" && reqJavaMajor >= 21) {
     try {
       const cdsDir = path.join(root, "cache", "cds");
       fs.mkdirSync(cdsDir, { recursive: true });
       const safeVer = req.version.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const cdsFile = path.join(cdsDir, `cds-${safeVer}-${req.loader.toLowerCase()}.jsa`);
+      const cdsFile = path.join(cdsDir, `cds-${safeVer}-vanilla.jsa`);
+      if (fs.existsSync(cdsFile) && fs.statSync(cdsFile).size === 0) {
+        try { fs.unlinkSync(cdsFile); } catch {}
+      }
       defaultJvmArgs.push(
+        "-XX:+UnlockDiagnosticVMOptions",
+        "-XX:+AllowArchivingWithJavaAgent",
         "-Xshare:auto",
         "-XX:+AutoCreateSharedArchive",
         `-XX:SharedArchiveFile=${cdsFile}`
       );
     } catch {}
+  } else {
+    // For mod loaders, ensure CDS auto-dumping is turned off to avoid JVM abortion with Java agents/mixins
+    defaultJvmArgs.push("-Xshare:auto");
   }
 
   for (const flag of defaultJvmArgs) {
@@ -1889,7 +1901,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
       const profId = `${prefix}-${lv}-${req.version}`;
       const dir = path.join(root, "versions", profId);
       const profPath = path.join(dir, profId + ".json");
-      if (fs.existsSync(profPath)) {
+      if (fs.existsSync(profPath) && fs.statSync(profPath).size > 0) {
         opts.version.custom = profId;
       } else {
         const metaUrl = isQuilt
@@ -1897,8 +1909,12 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
           : `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(req.version)}/${encodeURIComponent(lv)}/profile/json`;
         const prof = await getJson<any>(metaUrl);
         fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, prof.id + ".json"), JSON.stringify(prof, null, 2), "utf8");
-        opts.version.custom = prof.id;
+        const targetProfJson = path.join(dir, (prof.id || profId) + ".json");
+        fs.writeFileSync(targetProfJson, JSON.stringify(prof, null, 2), "utf8");
+        if (prof.id && prof.id !== profId) {
+          try { fs.writeFileSync(profPath, JSON.stringify(prof, null, 2), "utf8"); } catch {}
+        }
+        opts.version.custom = prof.id || profId;
       }
     } else {
       const isNeo = req.loader === "NeoForge";
@@ -1933,8 +1949,11 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
         const needsInstall = !fs.existsSync(profJsonPath) || (
           isNeo
             ? !fs.existsSync(path.join(root, "libraries", "net", "neoforged", "minecraft-client-patched", lv, `minecraft-client-patched-${lv}.jar`)) &&
-              !fs.existsSync(path.join(root, "libraries", "net", "neoforged", "neoforge", lv, `neoforge-${lv}-client.jar`))
-            : !fs.existsSync(path.join(root, "libraries", "net", "minecraftforge", "forge", full, `forge-${full}-client.jar`))
+              !fs.existsSync(path.join(root, "libraries", "net", "neoforged", "neoforge", lv, `neoforge-${lv}-client.jar`)) &&
+              !fs.existsSync(path.join(root, "libraries", "net", "neoforged", "neoforge", lv, `neoforge-${lv}-universal.jar`)) &&
+              !fs.existsSync(path.join(root, "libraries", "net", "neoforged", "neoforge", lv, `neoforge-${lv}.jar`))
+            : !fs.existsSync(path.join(root, "libraries", "net", "minecraftforge", "forge", full, `forge-${full}-client.jar`)) &&
+              !fs.existsSync(path.join(root, "libraries", "net", "minecraftforge", "forge", full, `forge-${full}.jar`))
         );
 
         if (needsInstall) {
@@ -1950,13 +1969,20 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
             const libDir = path.resolve(root, "libraries");
             const sep = process.platform === "win32" ? ";" : ":";
             const rawJvm = profJson?.arguments?.jvm || [];
-            for (const item of rawJvm) {
-              if (typeof item === "string") {
-                const resolved = item
-                  .replace(/\$\{library_directory\}/g, libDir)
-                  .replace(/\$\{classpath_separator\}/g, sep)
-                  .replace(/\$\{version_name\}/g, profId);
-                opts.customArgs.push(resolved);
+            for (const rawItem of rawJvm) {
+              const vals: string[] = typeof rawItem === "string"
+                ? [rawItem]
+                : (Array.isArray(rawItem?.value) ? rawItem.value : (rawItem?.value ? [rawItem.value] : []));
+              for (const item of vals) {
+                if (typeof item === "string") {
+                  const resolved = item
+                    .replace(/\$\{library_directory\}/g, libDir)
+                    .replace(/\$\{classpath_separator\}/g, sep)
+                    .replace(/\$\{version_name\}/g, profId);
+                  if (!opts.customArgs.includes(resolved)) {
+                    opts.customArgs.push(resolved);
+                  }
+                }
               }
             }
           } catch {}
@@ -1971,6 +1997,9 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     try {
       const jar = await ensureAuthlib(root);
       opts.customArgs.push(`-javaagent:${jar}=ely.by`);
+      if (!opts.customArgs.includes("-XX:+AllowArchivingWithJavaAgent")) {
+        opts.customArgs.push("-XX:+UnlockDiagnosticVMOptions", "-XX:+AllowArchivingWithJavaAgent");
+      }
     } catch (e) {
       console.warn("Could not setup authlib-injector:", e);
     }
