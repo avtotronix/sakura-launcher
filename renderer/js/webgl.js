@@ -92,7 +92,19 @@ const mkPhoto=()=>{
 const MK={sakura:mkSakura,aurora:mkGL('aurora'),forest:mkGL('forest'),sunset:mkGL('sunset'),photo:mkPhoto},SCN={};let scene=null;
 function setScene(id){
   if(id==='synth')id='sunset';if(id==='nether'||id==='ocean')id='forest';
-  if(!MK[id])id='sakura';
+  
+  if (['cyberpunk', 'oled', 'autumn'].includes(id)) {
+    let sc = SCN[id] || (SCN[id] = mkSakura());
+    scene = sc;
+    document.documentElement.dataset.scene = id;
+    $('#g').hidden = true;
+    $('#c').hidden = false;
+    sc.build();
+    ST.scene = id;
+    $('#phs').hidden = true;
+    return;
+  }
+if(!MK[id])id='sakura';
   let sc=SCN[id]||(SCN[id]=MK[id]());
   if(!sc){id='sakura';sc=SCN[id]||(SCN[id]=MK[id]())}
   scene=sc;document.documentElement.dataset.scene=id;

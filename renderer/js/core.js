@@ -114,4 +114,47 @@ const mkSakura=()=>{
   };
 };
 
-/* ---- scenes drawn by shaders (WebGL) ---- */
+/* ---- scenes drawn by shaders (WebGL) ---- */
+// WebAudio SFX synthesizer (zero latency, zero assets)
+let sfxCtx = null;
+function playSfx(type = 'click') {
+  if (ST.sfxEnabled === false) return;
+  try {
+    if (!sfxCtx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) sfxCtx = new AudioCtx();
+    }
+    if (!sfxCtx) return;
+    if (sfxCtx.state === 'suspended') sfxCtx.resume();
+
+    const t = sfxCtx.currentTime;
+    const osc = sfxCtx.createOscillator();
+    const gain = sfxCtx.createGain();
+    osc.connect(gain);
+    gain.connect(sfxCtx.destination);
+
+    if (type === 'click') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(540, t);
+      osc.frequency.exponentialRampToValueAtTime(180, t + 0.04);
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+      osc.start(t);
+      osc.stop(t + 0.045);
+    } else if (type === 'switch') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(420, t);
+      osc.frequency.exponentialRampToValueAtTime(840, t + 0.06);
+      gain.gain.setValueAtTime(0.06, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+      osc.start(t);
+      osc.stop(t + 0.065);
+    }
+  } catch {}
+}
+window.playSfx = playSfx;
+
+document.addEventListener('pointerdown', (e) => {
+  const target = e.target.closest('button, .chip, .mtype-pill, .mtab-pill, select, input[type="checkbox"]');
+  if (target) playSfx('click');
+}, { passive: true });

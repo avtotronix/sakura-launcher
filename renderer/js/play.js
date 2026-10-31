@@ -1,3 +1,22 @@
+
+window.directServerIp = null;
+window.setDirectServer = function(ip) {
+  window.directServerIp = ip;
+  const banner = document.getElementById('play_srv_banner');
+  const text = document.getElementById('play_srv_ip_text');
+  if (banner && text) {
+    text.textContent = ip;
+    banner.style.display = 'flex';
+  }
+};
+
+window.clearDirectServer = function() {
+  window.directServerIp = null;
+  const banner = document.getElementById('play_srv_banner');
+  if (banner) banner.style.display = 'none';
+  toast('Прямое подключение к серверу отменено');
+};
+
 let closeTimer = null;
 /* ---- Play & Versions Logic ---- */
 const vs = $('#ver');
@@ -140,6 +159,7 @@ window.doLaunchGame = async function(e) {
       loader: l,
       ram: (ST.ram && Number(ST.ram) >= 1) ? Math.round(Number(ST.ram)) : 4,
       packId: packId,
+      server: window.directServerIp || undefined,
       elyAuth: !!ST.elyAuth,
       skinData: ST.skinData || '',
       skinSlim: !!ST.skinSlim,
@@ -213,6 +233,65 @@ if (window.sakura && window.sakura.onLauncherEvent) {
       box.scrollTop = box.scrollHeight;
     }
   });
+  
+  window.sakura.onLauncherEvent('crashed', (data) => {
+    busy = false;
+    window.isGameRunning = false;
+    window.upd();
+    if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+
+    const dlg = document.getElementById('crash_dlg');
+    if (!dlg) return;
+
+    data = data || {};
+    const analysis = data.analysis || {};
+    const code = data.code || 1;
+    document.getElementById('crash_code_sub').textContent = 'Код выхода: ' + code;
+    document.getElementById('crash_reason_title').textContent = analysis.reason || 'Minecraft завершился с ошибкой';
+    document.getElementById('crash_reason_text').textContent = analysis.details || 'Конкретная ошибка не определена. Проверьте лог игры во вкладке «Логи».';
+
+    const culpritsWrap = document.getElementById('crash_culprits_wrap');
+    const culpritsList = document.getElementById('crash_culprits_list');
+    const fixBtn = document.getElementById('crash_fix_btn');
+
+    if (analysis.culprits && analysis.culprits.length > 0) {
+      culpritsWrap.style.display = 'block';
+      culpritsList.innerHTML = analysis.culprits.map(c => '<code style="background:rgba(255,255,255,0.06);padding:3px 8px;border-radius:6px;font-size:12px;color:#ff8888">' + (window.esc ? window.esc(c) : c) + '</code>').join('');
+      fixBtn.style.display = 'inline-block';
+      fixBtn.textContent = 'Отключить ' + (analysis.culprits.length === 1 ? 'мод ' + analysis.culprits[0] : 'проблемные моды');
+      fixBtn.onclick = async () => {
+        if (window.sakura && window.sakura.disableCrashCulprits && data.modsDir) {
+          await window.sakura.disableCrashCulprits(data.modsDir, analysis.culprits);
+          toast('Проблемный мод отключен (.disabled)!');
+          dlg.close();
+        }
+      };
+    } else {
+      culpritsWrap.style.display = 'none';
+      fixBtn.style.display = 'none';
+    }
+
+    const copyBtn = document.getElementById('crash_copy_btn');
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        const box = document.getElementById('game_log_box');
+        const text = (analysis.raw || (box ? box.textContent : '')) || 'Лог пуст';
+        navigator.clipboard.writeText(text).then(() => toast('Лог скопирован!'));
+      };
+    }
+
+    const folderBtn = document.getElementById('crash_folder_btn');
+    if (folderBtn) {
+      folderBtn.onclick = () => {
+        if (window.sakura && window.sakura.openGameFolder) {
+          window.sakura.openGameFolder('crash-reports');
+        }
+      };
+    }
+
+    dlg.showModal();
+  });
+
   window.sakura.onLauncherEvent('closed', (data) => {
     busy = false;
     window.isGameRunning = false;

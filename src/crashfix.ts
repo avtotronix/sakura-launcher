@@ -234,22 +234,16 @@ export function analyseCrash(rawText: string, modsDir: string): CrashAnalysis {
 }
 
 /**
- * Disables mod files by moving them into a `disabled/` subfolder
+ * Disables mod files by renaming them to .disabled (recognized by InstancesManager and Minecraft)
  */
 export function disableMods(modsDir: string, filenames: string[]): string[] {
   if (!modsDir || !fs.existsSync(modsDir) || !filenames.length) return [];
-  const disabledDir = path.join(modsDir, "disabled");
-  try {
-    if (!fs.existsSync(disabledDir)) fs.mkdirSync(disabledDir, { recursive: true });
-  } catch {
-    return [];
-  }
-
   const disabled: string[] = [];
   for (const fn of filenames) {
     const src = path.join(modsDir, fn);
-    const dst = path.join(disabledDir, fn);
     if (!fs.existsSync(src)) continue;
+    const dst = src.endsWith(".disabled") ? src : src + ".disabled";
+    if (src === dst) continue;
     try {
       if (fs.existsSync(dst)) fs.unlinkSync(dst);
       fs.renameSync(src, dst);
@@ -269,17 +263,23 @@ export function disableMods(modsDir: string, filenames: string[]): string[] {
  * Re-enables previously disabled mods
  */
 export function enableMods(modsDir: string, filenames: string[]): string[] {
-  const disabledDir = path.join(modsDir, "disabled");
-  if (!fs.existsSync(disabledDir)) return [];
+  if (!modsDir || !fs.existsSync(modsDir) || !filenames.length) return [];
   const restored: string[] = [];
   for (const fn of filenames) {
-    const src = path.join(disabledDir, fn);
-    const dst = path.join(modsDir, fn);
+    const src = path.join(modsDir, fn.endsWith(".disabled") ? fn : fn + ".disabled");
+    const dst = path.join(modsDir, fn.replace(/\.disabled$/, ""));
     if (!fs.existsSync(src)) continue;
     try {
+      if (fs.existsSync(dst)) fs.unlinkSync(dst);
       fs.renameSync(src, dst);
       restored.push(fn);
-    } catch {}
+    } catch {
+      try {
+        fs.copyFileSync(src, dst);
+        fs.unlinkSync(src);
+        restored.push(fn);
+      } catch {}
+    }
   }
   return restored;
 }

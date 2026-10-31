@@ -11,6 +11,7 @@ import AdmZip from "adm-zip";
 import { download, getJson, safeId } from "./net";
 import { getLaunchAuth } from "./accounts";
 import { getMatrix, Loader } from "./versions";
+import { analyseCrash, disableMods, latestCrashReport, readLatestLog } from "./crashfix";
 
 const LOADERS: Loader[] = ["Fabric", "Forge", "NeoForge", "Quilt", "Horizon", "Vanilla"];
 
@@ -2028,6 +2029,7 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     }
   }
 
+  const launchStartTime = Date.now();
   const client = new Client();
   client.on("debug", (m: string) => send(wc, "game:log", String(m)));
   client.on("data", (m: string) => send(wc, "game:log", String(m)));
@@ -2039,6 +2041,31 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
     send(wc, "game:closed", { code });
     if (friendsSystem) {
       try { friendsSystem.stopMonitoring(); } catch {}
+    }
+    if (code !== 0) {
+      setTimeout(() => {
+        try {
+          const report = latestCrashReport(targetGameDir);
+          let rawLog = "";
+          if (report && fs.existsSync(report)) {
+            rawLog = fs.readFileSync(report, "utf8");
+          } else {
+            rawLog = readLatestLog(targetGameDir, launchStartTime - 10000) || "";
+          }
+          const modsDir = path.join(targetGameDir, "mods");
+          const analysis = analyseCrash(rawLog, modsDir);
+          send(wc, "game:crashed", {
+            code,
+            analysis,
+            reportPath: report,
+            logPath: path.join(targetGameDir, "logs", "latest.log"),
+            modsDir,
+            packId: req.packId || "",
+          });
+        } catch (e) {
+          console.warn("Crash analyzer error:", e);
+        }
+      }, 300);
     }
   });
 
@@ -2067,6 +2094,11 @@ async function launch(req: LaunchReq, root: string, wc: WebContents, friendsSyst
 
 export function registerLauncherIPC(getRoot: () => string, getFriendsSystem?: () => any) {
   ipcMain.handle("launcher:get-installed", () => readInstalled(getRoot()));
+
+  ipcMain.handle("crash:disable-culprits", (_e, { modsDir, culprits }: any) => {
+    if (!modsDir || !Array.isArray(culprits)) return [];
+    return disableMods(modsDir, culprits);
+  });
 
   ipcMain.handle("game:launch", async (e, raw: unknown) => {
     let req: LaunchReq;

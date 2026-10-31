@@ -1,3 +1,12 @@
+
+if ($('#sfx_enabled')) {
+  $('#sfx_enabled').checked = ST.sfxEnabled !== false;
+  $('#sfx_enabled').onchange = (e) => {
+    ST.sfxEnabled = e.target.checked;
+    save();
+  };
+}
+
 function accUI(){ if($('#gb')){$('#gb').textContent=ST.g?'Выйти':'Войти через Google';$('#gb').classList.toggle('on',!!ST.g);$('#gs').textContent=ST.g?'Google аккаунт подключён':'Используйте Google для удобного входа';} if($('#who')) $('#who').textContent=ST.nick||(ST.g?'Аккаунт Google':'Гость'); }
 function applyST(full){ if($('#showSnap')) $('#showSnap').checked=!!ST.showSnap; if($('#showAlpha')) $('#showAlpha').checked=!!ST.showAlpha;
   if($('#jvm_args')) $('#jvm_args').value=ST.jvmArgs||'';
@@ -5,7 +14,7 @@ function applyST(full){ if($('#showSnap')) $('#showSnap').checked=!!ST.showSnap;
   if($('#game_h')) $('#game_h').value=ST.gameH||'720';
   if($('#game_fs')) $('#game_fs').checked=!!ST.gameFs;
   $('#ram').value=ST.ram;$('#rv').textContent=ST.ram+' ГБ';$('#java').selectedIndex=ST.java;$('#dir').value=ST.dir;$('#cl').checked=ST.cl;
-  $('#qs').value=ST.q;$('#an').checked=ST.anim!==false;document.documentElement.dataset.q=ST.q;$('#phd').value=ST.phDim;$('#phbl').value=ST.phBlur;$('#pt').checked=ST.petals;S.petals=ST.petals;$('#wd').value=ST.wind;S.wind=ST.wind;accUI();
+  $('#qs').value=ST.q;$('#an').checked=ST.anim!==false;document.documentElement.dataset.q=ST.q;$('#phd').value=ST.phDim;$('#phbl').value=ST.phBlur;$('#pt').checked=ST.petals;S.petals=ST.petals;$('#wd').value=ST.wind;S.wind=ST.wind;if($('#sfx_enabled')) $('#sfx_enabled').checked=ST.sfxEnabled!==false;accUI();
   if(full){setScene(ST.scene);$('#scn').value=ST.scene;}
 }
 if($('#jvm_args')) $('#jvm_args').oninput=e=>{ST.jvmArgs=e.target.value;save()};

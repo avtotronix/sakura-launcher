@@ -197,21 +197,12 @@ window.copyServerIp = function(ip, btnElem) {
 };
 
 window.playOnServer = function(ip) {
-  toast('Запуск с подключением к ' + ip + '...');
-  if (window.sakura && window.sakura.launchMinecraft) {
-    const ver = $('#ver') ? $('#ver').value : '1.21.4';
-    const ram = ST.ram || 4;
-    window.sakura.launchMinecraft({
-      version: ver,
-      loader: 'Fabric',
-      ram: ram,
-      server: ip
-    });
-  } else {
-    const playTab = document.querySelector('.n[data-p="play"]');
-    if (playTab) playTab.click();
-    toast('Для входа на ' + ip + ' нажмите кнопку «Играть»');
+  if (window.setDirectServer) {
+    window.setDirectServer(ip);
   }
+  const playTab = document.querySelector('.n[data-p="play"]');
+  if (playTab) playTab.click();
+  toast('Сервер ' + ip + ' выбран! Нажмите «Играть» для подключения.');
 };
 
 

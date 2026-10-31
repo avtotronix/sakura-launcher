@@ -49,6 +49,11 @@ const INVOKE_CHANNELS = [
   "instances:toggle-component",
   "instances:delete-component",
   "instances:export",
+  "instances:export-dialog",
+  "instances:import",
+  "instances:import-dialog",
+  "instances:install-fps-preset",
+  "crash:disable-culprits",
   "downloads:list",
   "downloads:cancel",
   "downloads:retry",
@@ -175,6 +180,11 @@ export interface SakuraAPI {
   toggleInstanceComponent(packId: string, folder: string, filename: string): Promise<boolean>;
   deleteInstanceComponent(packId: string, folder: string, filename: string): Promise<boolean>;
   exportInstance(packId: string, outZipPath: string): Promise<boolean>;
+  exportInstanceDialog(packId: string, defaultName?: string): Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
+  importInstance(archivePath: string, name?: string): Promise<{ ok: boolean; id?: string; name?: string; error?: string }>;
+  importInstanceDialog(): Promise<{ ok: boolean; id?: string; name?: string; error?: string; canceled?: boolean }>;
+  installFpsPreset(packId: string, version: string, loader: string): Promise<{ ok: boolean; installed: string[]; error?: string }>;
+  disableCrashCulprits(modsDir: string, culprits: string[]): Promise<string[]>;
 
   /** Download Manager API */
   getDownloads(): Promise<any[]>;
@@ -241,7 +251,7 @@ export interface SakuraAPI {
   curseforgeSetApiKey(key: string): Promise<boolean>;
 
   /** Listen for launcher events */
-  onLauncherEvent(channel: 'log' | 'progress', callback: (data: any) => void): void;
+  onLauncherEvent(channel: 'log' | 'progress' | 'crashed' | 'closed', callback: (data: any) => void): void;
 
   /** Updater API */
   checkForUpdates(): Promise<any>;
@@ -320,6 +330,16 @@ const sakuraAPI: SakuraAPI = {
     safeInvoke("instances:delete-component", { packId, folder, filename }) as Promise<boolean>,
   exportInstance: (packId: string, outZipPath: string) =>
     safeInvoke("instances:export", { packId, outZipPath }) as Promise<boolean>,
+  exportInstanceDialog: (packId: string, defaultName?: string) =>
+    safeInvoke("instances:export-dialog", { packId, defaultName }) as Promise<{ ok: boolean; path?: string; canceled?: boolean }>,
+  importInstance: (archivePath: string, name?: string) =>
+    safeInvoke("instances:import", { archivePath, name }) as Promise<{ ok: boolean; id?: string; name?: string; error?: string }>,
+  importInstanceDialog: () =>
+    safeInvoke("instances:import-dialog") as Promise<{ ok: boolean; id?: string; name?: string; error?: string; canceled?: boolean }>,
+  installFpsPreset: (packId: string, version: string, loader: string) =>
+    safeInvoke("instances:install-fps-preset", { packId, version, loader }) as Promise<{ ok: boolean; installed: string[]; error?: string }>,
+  disableCrashCulprits: (modsDir: string, culprits: string[]) =>
+    safeInvoke("crash:disable-culprits", { modsDir, culprits }) as Promise<string[]>,
 
   // Download Manager
   getDownloads: () => safeInvoke("downloads:list") as Promise<any[]>,

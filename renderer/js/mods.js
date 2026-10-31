@@ -63,7 +63,9 @@ let mseq = 0;
 let msearchTimer = null;
 let mloaded = false;
 
-const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+window.esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const esc = window.esc;
+const jsEsc = s => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 const fmtN = n => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' млн' : (n >= 1e3 ? Math.round(n / 1e3) + ' тыс.' : String(n || 0));
 
 const SV = {
@@ -969,34 +971,119 @@ if (pnokBtn) {
   };
 }
 
-// Pack view dialog / deletion
-window.openModpackDialog = function(id) {
+// Pack view dialog & Mod Manager
+window.currentPackViewId = null;
+window.loadedPackMods = [];
+
+window.openModpackDialog = async function(id) {
+  window.currentPackViewId = id;
   const p = (ST.packs || []).find(x => x.id === id);
   if (!p) return;
   const pv = document.getElementById('pack_view');
   if (!pv) return;
 
   document.getElementById('packt').textContent = p.name;
-  document.getElementById('pack_desc_view').textContent = p.desc || 'Игровая сборка';
-  document.getElementById('pack_ver_info').textContent = `${p.v || '1.21.1'} (${p.l || 'Fabric'})`;
+  document.getElementById('pack_desc_view').textContent = p.desc || 'Изолированная игровая сборка.';
+  document.getElementById('pack_ver_info').textContent = (p.v || '1.21.4') + ' (' + (p.l || 'Fabric') + ')';
   document.getElementById('pack_mods_count').textContent = String(p.modsCount || 0);
 
+  const playtimeEl = document.getElementById('pack_playtime');
+  if (playtimeEl) playtimeEl.textContent = (p.playtimeMinutes || 0) + ' мин.';
+
+  const createdEl = document.getElementById('pack_created_date');
+  if (createdEl) {
+    const d = p.createdAt ? new Date(p.createdAt) : null;
+    createdEl.textContent = (d && !isNaN(d.getTime())) ? d.toLocaleDateString('ru-RU') : 'Недавно';
+  }
+
+  // Tab switching
+  const tabSettings = document.getElementById('pack_tab_settings');
+  const tabMods = document.getElementById('pack_tab_mods');
+  const viewSettings = document.getElementById('pack_settings_view');
+  const viewMods = document.getElementById('pack_mods_view');
+
+  function showTab(t) {
+    if (t === 'settings') {
+      if (tabSettings) tabSettings.classList.add('act');
+      if (tabMods) tabMods.classList.remove('act');
+      if (viewSettings) viewSettings.hidden = false;
+      if (viewMods) viewMods.hidden = true;
+    } else {
+      if (tabMods) tabMods.classList.add('act');
+      if (tabSettings) tabSettings.classList.remove('act');
+      if (viewSettings) viewSettings.hidden = true;
+      if (viewMods) viewMods.hidden = false;
+      window.renderPackModsList(id);
+    }
+  }
+
+  if (tabSettings) tabSettings.onclick = () => showTab('settings');
+  if (tabMods) tabMods.onclick = () => showTab('mods');
+  showTab('settings');
+
+  // FPS Boost button
+  const boostBtn = document.getElementById('pack_fps_boost_btn');
+  if (boostBtn) {
+    boostBtn.onclick = async () => {
+      boostBtn.disabled = true;
+      boostBtn.textContent = '⏳ Установка FPS Boost...';
+      toast('Скачивание модов оптимизации (Sodium, Lithium, FerriteCore)...');
+      try {
+        if (window.sakura && window.sakura.installFpsPreset) {
+          const res = await window.sakura.installFpsPreset(p.id, p.v || '1.21.4', p.l || 'Fabric');
+          if (res && res.ok) {
+            toast('Оптимизация установлена! Добавлено: ' + res.installed.length + ' файлов');
+            if (window.syncDiskPacks) await window.syncDiskPacks();
+            const updated = (ST.packs || []).find(x => x.id === id);
+            if (updated) document.getElementById('pack_mods_count').textContent = String(updated.modsCount || 0);
+          } else {
+            toast('Не удалось найти моды оптимизации для этой версии');
+          }
+        }
+      } catch (e) {
+        toast('Ошибка установки оптимизации: ' + e.message);
+      } finally {
+        boostBtn.disabled = false;
+        boostBtn.textContent = '⚡ Оптимизация в 1 клик (FPS Boost)';
+      }
+    };
+  }
+
+  // Export instance button
+  const exportBtn = document.getElementById('pack_export_btn');
+  if (exportBtn) {
+    exportBtn.onclick = async () => {
+      toast('Выберите место для сохранения ZIP-архива...');
+      if (window.sakura && window.sakura.exportInstanceDialog) {
+        const res = await window.sakura.exportInstanceDialog(p.id, p.name);
+        if (res && res.ok) {
+          toast('Сборка успешно экспортирована!');
+        } else if (res && !res.canceled) {
+          toast('Ошибка экспорта сборки');
+        }
+      }
+    };
+  }
+
+  // Delete instance button
   const delBtn = document.getElementById('pack_delete_btn');
   if (delBtn) {
     delBtn.onclick = () => {
       const confirmDlg = document.getElementById('confirm_dlg');
       if (confirmDlg) {
         document.getElementById('confirm_title').textContent = 'Удаление сборки';
-        document.getElementById('confirm_msg').textContent = `Вы уверены, что хотите удалить сборку «${p.name}»? Все файлы сборки будут безопасно удалены, а файлы в Library сохранятся.`;
+        document.getElementById('confirm_msg').textContent = 'Вы уверены, что хотите удалить сборку «' + p.name + '»? Все файлы сборки будут безопасно удалены, а файлы в Library сохранятся.';
         const confirmOk = document.getElementById('confirm_ok');
         if (confirmOk) {
           confirmOk.onclick = async () => {
             confirmDlg.close();
             if (window.sakura && window.sakura.deleteInstance) {
               await window.sakura.deleteInstance(p.id);
-              toast(`Сборка «${p.name}» удалена`);
+              if (window.syncDiskPacks) await window.syncDiskPacks();
+              toast('Сборка «' + p.name + '» удалена');
               pv.hidden = true;
-              document.querySelector('.n[data-p="instances"]')?.click();
+              window.currentPackViewId = null;
+              document.querySelector('[data-p="mods"]')?.click();
             }
           };
         }
@@ -1005,18 +1092,124 @@ window.openModpackDialog = function(id) {
     };
   }
 
+  // Folder buttons
   const folderBtn = document.getElementById('pack_folder_btn');
   if (folderBtn) {
     folderBtn.onclick = () => {
       if (window.sakura && window.sakura.openGameFolder) {
-        window.sakura.openGameFolder(`instances/${p.id}`);
+        window.sakura.openGameFolder('instances/' + p.id);
       }
     };
+  }
+
+  const modsFolderBtn = document.getElementById('pack_mods_folder_btn');
+  if (modsFolderBtn) {
+    modsFolderBtn.onclick = () => {
+      if (window.sakura && window.sakura.openGameFolder) {
+        window.sakura.openGameFolder('instances/' + p.id + '/mods');
+      }
+    };
+  }
+
+  // Mod search input in mods tab
+  const modSearchInput = document.getElementById('pack_mod_search');
+  if (modSearchInput) {
+    modSearchInput.value = '';
+    modSearchInput.oninput = () => window.filterPackModsList(modSearchInput.value);
   }
 
   pv.hidden = false;
   document.getElementById('mods').hidden = true;
 };
+
+window.renderPackModsList = async function(packId) {
+  const listEl = document.getElementById('pack_mods_list');
+  if (!listEl) return;
+  listEl.innerHTML = '<p class="sub">Загрузка списка модов...</p>';
+
+  try {
+    let mods = [];
+    if (window.sakura && window.sakura.getInstanceComponents) {
+      mods = await window.sakura.getInstanceComponents(packId, 'mods');
+    }
+    window.loadedPackMods = mods || [];
+    window.filterPackModsList(document.getElementById('pack_mod_search')?.value || '');
+  } catch (err) {
+    listEl.innerHTML = '<p class="sub" style="color:#ff5555">Ошибка чтения модов: ' + err.message + '</p>';
+  }
+};
+
+window.filterPackModsList = function(query) {
+  const listEl = document.getElementById('pack_mods_list');
+  if (!listEl) return;
+  const q = (query || '').toLowerCase().trim();
+  const mods = (window.loadedPackMods || []).filter(m => m && (!q || ((m.name || '') + ' ' + (m.filename || '')).toLowerCase().includes(q)));
+
+  if (mods.length === 0) {
+    listEl.innerHTML = '<p class="sub">' + (q ? 'Ничего не найдено по запросу.' : 'В этой сборке пока нет модов. Скачивайте моды во вкладке Browse или установите пресет FPS Boost!') + '</p>';
+    return;
+  }
+
+  listEl.innerHTML = mods.map(m => `
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:10px 14px;gap:12px">
+      <div style="flex:1;min-width:0">
+        <b style="font-size:14px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${m.enabled ? 'var(--ink)' : 'var(--mute)'}">${esc(m.name)}</b>
+        <small style="color:var(--mute);font-size:11px">${esc(m.filename)} • ${Math.round(m.size / 1024)} КБ</small>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <label class="mod-switch" title="${m.enabled ? 'Отключить мод' : 'Включить мод'}">
+          <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="window.toggleInstanceModItem('${jsEsc(m.filename)}', this.checked)">
+          <span class="mod-slider"></span>
+        </label>
+        <button class="mod-del-btn" title="Удалить мод" onclick="window.deleteInstanceModItem('${jsEsc(m.filename)}')">
+          ${SV.del}
+        </button>
+      </div>
+    </div>
+  `).join('');
+};
+
+window.toggleInstanceModItem = async function(filename, isEnabled) {
+  const packId = window.currentPackViewId;
+  if (!packId) return;
+  if (window.sakura && window.sakura.toggleInstanceComponent) {
+    await window.sakura.toggleInstanceComponent(packId, 'mods', filename);
+    toast('Мод ' + filename + (isEnabled ? ' включен' : ' отключен'));
+    await window.renderPackModsList(packId);
+  }
+};
+
+window.deleteInstanceModItem = async function(filename) {
+  const packId = window.currentPackViewId;
+  if (!packId) return;
+  if (window.sakura && window.sakura.deleteInstanceComponent) {
+    await window.sakura.deleteInstanceComponent(packId, 'mods', filename);
+    toast('Мод ' + filename + ' удален');
+    await window.renderPackModsList(packId);
+    if (window.syncDiskPacks) await window.syncDiskPacks();
+    const updated = (ST.packs || []).find(p => p.id === packId);
+    if (updated) document.getElementById('pack_mods_count').textContent = String(updated.modsCount || 0);
+  }
+};
+
+// Wire Import button on Instances screen
+const pimpInput = document.getElementById('pimp');
+if (pimpInput) {
+  pimpInput.onclick = async (e) => {
+    e.preventDefault();
+    if (window.sakura && window.sakura.importInstanceDialog) {
+      toast('Выберите архив .zip или .mrpack...');
+      const res = await window.sakura.importInstanceDialog();
+      if (res && res.ok) {
+        toast('Сборка «' + res.name + '» успешно импортирована!');
+        if (window.syncDiskPacks) await window.syncDiskPacks();
+        if (typeof rMine === 'function') rMine();
+      } else if (res && !res.canceled) {
+        toast('Ошибка импорта: ' + (res.error || 'Не удалось распаковать'));
+      }
+    }
+  };
+}
 
 // Initial setup
 setTimeout(() => {
